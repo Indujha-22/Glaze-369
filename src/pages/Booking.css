@@ -1,0 +1,241 @@
+/* Booking Container */
+.booking-container {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: 3rem;
+    align-items: start;
+}
+
+/* Booking Info */
+.booking-info {
+    padding: 2rem;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    position: sticky;
+    top: 100px;
+}
+
+.booking-info h3 {
+    font-size: 1.25rem;
+    margin-bottom: 1.5rem;
+    color: var(--color-accent);
+}
+
+.info-item {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.info-item:last-of-type {
+    border-bottom: none;
+}
+
+.info-item svg {
+    flex-shrink: 0;
+    color: var(--color-accent);
+    margin-top: 2px;
+}
+
+.info-item strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--color-text-primary);
+}
+
+.info-item p {
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.info-note {
+    display: flex;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: rgba(245, 197, 24, 0.1);
+    border: 1px solid var(--color-accent);
+    border-radius: var(--radius-md);
+    margin-top: 1.5rem;
+}
+
+.info-note svg {
+    flex-shrink: 0;
+    color: var(--color-accent);
+}
+
+.info-note p {
+    color: var(--color-text-secondary);
+    font-size: 0.85rem;
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* Booking Form */
+.booking-form {
+    padding: 2.5rem;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+}
+
+.booking-form h3 {
+    font-size: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.submit-btn {
+    width: 100%;
+}
+
+.submit-btn.loading {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.submit-btn .spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+/* Success Card */
+.booking-success {
+    min-height: 80vh;
+    display: flex;
+    align-items: center;
+}
+
+.success-card {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 3rem;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-2xl);
+    text-align: center;
+}
+
+.success-icon {
+    width: 100px;
+    height: 100px;
+    margin: 0 auto 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--color-accent), var(--color-accent-dark));
+    border-radius: 50%;
+    color: var(--color-bg-primary);
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.success-card h2 {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+.success-message {
+    font-size: 1.1rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 2rem;
+}
+
+.booking-details {
+    padding: 1.5rem;
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-lg);
+    margin-bottom: 1.5rem;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.detail-row:last-child {
+    border-bottom: none;
+}
+
+.detail-label {
+    color: var(--color-text-muted);
+}
+
+.detail-value {
+    color: var(--color-text-primary);
+    font-weight: 500;
+}
+
+.confirmation-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: rgba(245, 197, 24, 0.1);
+    border-radius: var(--radius-md);
+    margin-bottom: 2rem;
+}
+
+.confirmation-note svg {
+    flex-shrink: 0;
+    color: var(--color-accent);
+}
+
+.confirmation-note p {
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.success-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+    .booking-container {
+        grid-template-columns: 1fr;
+    }
+
+    .booking-info {
+        position: static;
+    }
+}
+
+@media (max-width: 600px) {
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .booking-form {
+        padding: 1.5rem;
+    }
+
+    .success-card {
+        padding: 2rem;
+    }
+
+    .success-actions {
+        flex-direction: column;
+    }
+
+    .success-actions .btn {
+        width: 100%;
+    }
+}

@@ -1,0 +1,223 @@
+/* About Grid */
+.about-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4rem;
+    align-items: center;
+}
+
+.about-content p {
+    font-size: 1.05rem;
+    line-height: 1.8;
+    color: var(--color-text-secondary);
+    margin-bottom: 1.5rem;
+}
+
+.about-image {
+    position: relative;
+}
+
+.about-image img {
+    width: 100%;
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-lg);
+}
+
+.about-image-accent {
+    position: absolute;
+    bottom: -20px;
+    right: -20px;
+    width: 200px;
+    height: 200px;
+    background: linear-gradient(135deg, var(--color-accent), transparent);
+    border-radius: var(--radius-2xl);
+    z-index: -1;
+    opacity: 0.3;
+}
+
+/* Values Section */
+.values-section {
+    background: var(--color-bg-secondary);
+}
+
+.values-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2rem;
+}
+
+.value-card {
+    padding: 2rem;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    text-align: center;
+    transition: all var(--transition-normal);
+}
+
+.value-card:hover {
+    border-color: var(--color-accent);
+    transform: translateY(-5px);
+}
+
+.value-icon {
+    width: 70px;
+    height: 70px;
+    margin: 0 auto 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--color-accent), var(--color-accent-dark));
+    border-radius: var(--radius-lg);
+    color: var(--color-bg-primary);
+}
+
+.value-card h3 {
+    font-size: 1.25rem;
+    margin-bottom: 0.75rem;
+}
+
+.value-card p {
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin: 0;
+}
+
+/* Stats Section */
+.stats-section {
+    background: linear-gradient(135deg, var(--color-bg-tertiary), var(--color-bg-primary));
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2rem;
+}
+
+.stat-item {
+    text-align: center;
+    padding: 2rem;
+}
+
+.stat-item .stat-number {
+    display: block;
+    font-family: var(--font-heading);
+    font-size: 3.5rem;
+    font-weight: 800;
+    color: var(--color-accent);
+    line-height: 1;
+    margin-bottom: 0.5rem;
+}
+
+.stat-item .stat-label {
+    font-size: 1rem;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Workshop Section */
+.workshop-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4rem;
+    align-items: center;
+}
+
+.workshop-text p {
+    font-size: 1.05rem;
+    line-height: 1.8;
+    color: var(--color-text-secondary);
+    margin-bottom: 1.5rem;
+}
+
+.workshop-images {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1rem;
+}
+
+.workshop-image {
+    overflow: hidden;
+    border-radius: var(--radius-xl);
+}
+
+.workshop-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--transition-slow);
+}
+
+.workshop-image:hover img {
+    transform: scale(1.05);
+}
+
+.workshop-image.main {
+    grid-row: span 2;
+}
+
+/* About CTA */
+.about-cta {
+    text-align: center;
+    padding: 3rem;
+    background: linear-gradient(135deg, var(--color-bg-tertiary), var(--color-bg-secondary));
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-2xl);
+}
+
+.about-cta h2 {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+.about-cta p {
+    color: var(--color-text-secondary);
+    margin-bottom: 2rem;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+
+    .about-grid,
+    .workshop-content {
+        grid-template-columns: 1fr;
+        gap: 3rem;
+    }
+
+    .values-grid,
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .about-image-accent {
+        display: none;
+    }
+
+    .workshop-images {
+        grid-template-columns: 1fr;
+    }
+
+    .workshop-image.main {
+        grid-row: auto;
+    }
+}
+
+@media (max-width: 600px) {
+
+    .values-grid,
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .stat-item .stat-number {
+        font-size: 2.5rem;
+    }
+
+    .about-cta {
+        padding: 2rem;
+    }
+}
