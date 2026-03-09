@@ -1,14 +1,26 @@
 import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 import './Navbar.css';
 
 function Navbar() {
     const [isScrolled, setIsScrolled] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const location = useLocation();
+    const navigate = useNavigate();
     const { getCartCount } = useCart();
+    const { user, logout } = useAuth();
     const cartCount = getCartCount();
+
+    const handleLogout = async () => {
+        try {
+            await logout();
+            navigate('/');
+        } catch (err) {
+            console.error('Logout failed:', err);
+        }
+    };
 
     useEffect(() => {
         const handleScroll = () => {
@@ -52,6 +64,25 @@ function Navbar() {
                             </li>
                         ))}
                     </ul>
+                    {/* Mobile auth buttons */}
+                    <div className="nav-auth-mobile">
+                        {user ? (
+                            <>
+                                <Link to="/dashboard" className="nav-link" onClick={() => setIsMobileMenuOpen(false)}>
+                                    {user.photoURL
+                                        ? <img src={user.photoURL} alt="profile" className="nav-avatar" />
+                                        : <span className="nav-avatar-letter">{user.email?.[0]?.toUpperCase()}</span>}
+                                    {user.displayName || user.email?.split('@')[0]}
+                                </Link>
+                                <button className="btn-nav-logout" onClick={() => { setIsMobileMenuOpen(false); handleLogout(); }}>Logout</button>
+                            </>
+                        ) : (
+                            <>
+                                <Link to="/login" className="btn-nav-login" onClick={() => setIsMobileMenuOpen(false)}>Login</Link>
+                                <Link to="/signup" className="btn-nav-signup" onClick={() => setIsMobileMenuOpen(false)}>Sign Up</Link>
+                            </>
+                        )}
+                    </div>
                 </nav>
 
                 <div className="nav-actions">
@@ -64,6 +95,25 @@ function Navbar() {
                         </svg>
                         {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
                     </Link>
+
+                    {/* Desktop auth buttons */}
+                    {user ? (
+                        <div className="nav-user-menu">
+                            <Link to="/dashboard" className="nav-user-btn">
+                                {user.photoURL
+                                    ? <img src={user.photoURL} alt="profile" className="nav-avatar" />
+                                    : <span className="nav-avatar-letter">{user.email?.[0]?.toUpperCase()}</span>}
+                                <span className="nav-username">{user.displayName || user.email?.split('@')[0]}</span>
+                            </Link>
+                            <button className="btn-nav-logout" onClick={handleLogout}>Logout</button>
+                        </div>
+                    ) : (
+                        <div className="nav-auth-btns">
+                            <Link to="/login" className="btn-nav-login">Login</Link>
+                            <Link to="/signup" className="btn-nav-signup">Sign Up</Link>
+                        </div>
+                    )}
+
                     <Link to="/booking" className="btn btn-primary nav-cta">
                         Book Slot
                     </Link>

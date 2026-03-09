@@ -1,26 +1,63 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { ref, get } from 'firebase/database';
+import { database } from '../config/firebase';
 import './Admin.css';
 
 /* ═══════════════════════════════════════════════════
-   ADMIN LOGIN
+   ADMIN LOGIN (Firebase Auth)
    ═══════════════════════════════════════════════════ */
 function AdminLogin({ onLogin }) {
-    const [credentials, setCredentials] = useState({ username: '', password: '' });
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const { signInWithEmail, logout } = useAuth();
+
+    // Hardcoded admin credentials
+    const ADMIN_EMAIL = 'adminb4u@gmail.com';
+    const ADMIN_PASSWORD = 'admin123';
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setLoading(true);
-        await new Promise(r => setTimeout(r, 800));
-        if (credentials.username === 'admin' && credentials.password === 'admin123') {
-            onLogin();
-        } else {
-            setError('Invalid credentials. Try admin / admin123');
+        if (!email || !password) {
+            setError('Please enter your email and password');
+            return;
         }
-        setLoading(false);
+        setLoading(true);
+        setError('');
+
+        // Check hardcoded admin credentials first
+        if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+            onLogin({ email: ADMIN_EMAIL, uid: 'local-admin' });
+            setLoading(false);
+            return;
+        }
+
+        try {
+            const user = await signInWithEmail(email, password);
+            // Verify admin status from database
+            const adminRef = ref(database, `admins/${user.uid}`);
+            const snapshot = await get(adminRef);
+            if (!snapshot.exists() || snapshot.val().isAdmin !== true) {
+                setError('Access denied. You do not have admin privileges.');
+                await logout();
+                return;
+            }
+            onLogin(user);
+        } catch (err) {
+            const msg =
+                err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential'
+                    ? 'Invalid email or password'
+                    : err.code === 'auth/too-many-requests'
+                        ? 'Too many failed attempts. Please try again later.'
+                        : err.message || 'Failed to sign in';
+            setError(msg);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -30,26 +67,51 @@ function AdminLogin({ onLogin }) {
                     <span className="logo-text">Glaze</span>
                     <span className="logo-accent">369</span>
                 </div>
+                <div className="admin-shield">🔐</div>
                 <h2>Admin Panel</h2>
+                <p className="login-subtitle">Sign in with your admin credentials</p>
                 <form onSubmit={handleSubmit}>
-                    {error && <div className="login-error">{error}</div>}
+                    {error && <div className="login-error">⚠️ {error}</div>}
                     <div className="form-group">
-                        <label className="form-label">Username</label>
-                        <input type="text" className="form-input" value={credentials.username}
-                            onChange={(e) => setCredentials(p => ({ ...p, username: e.target.value }))}
-                            placeholder="Enter username" required />
+                        <label className="form-label">Admin Email</label>
+                        <input
+                            type="email"
+                            className="form-input"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="admin@glaze369.com"
+                            disabled={loading}
+                            required
+                        />
                     </div>
                     <div className="form-group">
                         <label className="form-label">Password</label>
-                        <input type="password" className="form-input" value={credentials.password}
-                            onChange={(e) => setCredentials(p => ({ ...p, password: e.target.value }))}
-                            placeholder="Enter password" required />
+                        <div className="password-input-wrapper">
+                            <input
+                                type={showPassword ? 'text' : 'password'}
+                                className="form-input"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="Enter your password"
+                                disabled={loading}
+                                required
+                            />
+                            <button
+                                type="button"
+                                className="password-toggle-admin"
+                                onClick={() => setShowPassword(!showPassword)}
+                            >
+                                {showPassword ? '🙈' : '👁️'}
+                            </button>
+                        </div>
                     </div>
                     <button type="submit" className="btn btn-primary login-btn" disabled={loading}>
-                        {loading ? 'Signing in...' : 'Login'}
+                        {loading ? 'Verifying...' : '🔒 Sign In as Admin'}
                     </button>
                 </form>
-                <p className="login-hint">Demo: admin / admin123</p>
+                <p className="login-hint">
+                    Admin accounts must be pre-registered in Firebase.
+                </p>
             </div>
         </div>
     );
@@ -477,8 +539,10 @@ function SettingsPage() {
    ═══════════════════════════════════════════════════ */
 function Admin() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [adminUser, setAdminUser] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const location = useLocation();
+    const { logout } = useAuth();
 
     const navItems = [
         { path: '/admin', label: 'Dashboard', icon: '📊' },
@@ -491,8 +555,23 @@ function Admin() {
         { path: '/admin/settings', label: 'Settings', icon: '⚙️' },
     ];
 
+    const handleLogin = (user) => {
+        setAdminUser(user);
+        setIsLoggedIn(true);
+    };
+
+    const handleLogout = async () => {
+        try {
+            await logout();
+        } catch (err) {
+            console.error('Logout error:', err);
+        }
+        setIsLoggedIn(false);
+        setAdminUser(null);
+    };
+
     if (!isLoggedIn) {
-        return <AdminLogin onLogin={() => setIsLoggedIn(true)} />;
+        return <AdminLogin onLogin={handleLogin} />;
     }
 
     return (
@@ -515,7 +594,7 @@ function Admin() {
                     ))}
                 </nav>
                 <div className="sidebar-footer">
-                    <button className="btn btn-outline logout-btn" onClick={() => setIsLoggedIn(false)}>🚪 Logout</button>
+                    <button className="btn btn-outline logout-btn" onClick={handleLogout}>🚪 Logout</button>
                 </div>
             </aside>
 
@@ -526,7 +605,7 @@ function Admin() {
                         <h1>{navItems.find(n => n.path === location.pathname)?.label || 'Admin Panel'}</h1>
                     </div>
                     <div className="header-right">
-                        <span className="admin-user">👤 Admin</span>
+                        <span className="admin-user">👤 {adminUser?.email || 'Admin'}</span>
                     </div>
                 </header>
                 <div className="admin-content">

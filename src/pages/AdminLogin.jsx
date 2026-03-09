@@ -12,14 +12,24 @@ const AdminLogin = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    const { signInWithEmail } = useAuth();
+    const { signInWithEmail, logout } = useAuth();
     const navigate = useNavigate();
+
+    // Hardcoded admin credentials
+    const ADMIN_EMAIL = 'adminb4u@gmail.com';
+    const ADMIN_PASSWORD = 'admin123';
 
     const handleAdminLogin = async (e) => {
         e.preventDefault();
 
         if (!email || !password) {
             setError('Please fill in all fields');
+            return;
+        }
+
+        // Check hardcoded admin credentials first
+        if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+            navigate('/admin');
             return;
         }
 
@@ -38,7 +48,7 @@ const AdminLogin = () => {
             if (!snapshot.exists() || snapshot.val().isAdmin !== true) {
                 setError('Access denied. You do not have admin privileges.');
                 // Sign out the user
-                await auth.signOut();
+                await logout();
                 return;
             }
 

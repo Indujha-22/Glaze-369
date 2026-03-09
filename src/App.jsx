@@ -11,6 +11,7 @@ import Booking from './pages/Booking';
 import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
 import Admin from './pages/Admin';
+import AdminLogin from './pages/AdminLogin';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
@@ -38,6 +39,7 @@ function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/admin-login" element={<AdminLogin />} />
                 <Route
                   path="/dashboard"
                   element={
