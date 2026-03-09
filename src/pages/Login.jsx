@@ -143,7 +143,12 @@ const Login = () => {
                 <div className="auth-footer">
                     <p>
                         Don't have an account?{' '}
-                        <a href="/signup" className="auth-link">Sign up</a>
+                        <Link to="/signup" className="auth-link">Sign up</Link>
+                    </p>
+                    <p className="admin-login-link">
+                        <Link to="/admin" className="auth-link admin-link">
+                            🔐 Admin Login
+                        </Link>
                     </p>
                 </div>
             </div>

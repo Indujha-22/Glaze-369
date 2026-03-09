@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import useRazorpay from '../hooks/useRazorpay';
+import { ref, push, serverTimestamp } from 'firebase/database';
+import { database } from '../config/firebase';
 import './Checkout.css';
 
 function Checkout() {
@@ -38,9 +40,25 @@ function Checkout() {
                 mobile: formData.mobile,
             },
             cartItems,
-            onSuccess: (response) => {
+            onSuccess: async (response) => {
+                const orderId = response.orderId;
+                await push(ref(database, 'orders'), {
+                    customer: formData.name,
+                    email: formData.email,
+                    mobile: formData.mobile,
+                    address: `${formData.address}, ${formData.city} - ${formData.pincode}`,
+                    items: cartItems,
+                    itemCount: cartItems.length,
+                    total: getCartTotal(),
+                    payment: 'Razorpay',
+                    paymentId: response.paymentId,
+                    orderId,
+                    status: 'Pending',
+                    createdAt: serverTimestamp(),
+                    date: new Date().toISOString().split('T')[0],
+                });
                 setOrderInfo({
-                    orderId: response.orderId,
+                    orderId,
                     paymentId: response.paymentId,
                     method: 'Razorpay (Online)',
                 });
@@ -50,7 +68,6 @@ function Checkout() {
             },
             onFailure: () => {
                 setIsSubmitting(false);
-                // error state is already set inside the hook
             },
         });
     };
@@ -58,13 +75,23 @@ function Checkout() {
     // ── Cash on Delivery ──
     const handleCOD = async () => {
         setIsSubmitting(true);
-        // Simulate server acknowledgment
-        await new Promise(resolve => setTimeout(resolve, 1200));
-        setOrderInfo({
-            orderId: `GLZ${Date.now().toString().slice(-8)}`,
+        const orderId = `GLZ${Date.now().toString().slice(-8)}`;
+        await push(ref(database, 'orders'), {
+            customer: formData.name,
+            email: formData.email,
+            mobile: formData.mobile,
+            address: `${formData.address}, ${formData.city} - ${formData.pincode}`,
+            items: cartItems,
+            itemCount: cartItems.length,
+            total: getCartTotal(),
+            payment: 'COD',
             paymentId: '—',
-            method: 'Cash on Delivery',
+            orderId,
+            status: 'Pending',
+            createdAt: serverTimestamp(),
+            date: new Date().toISOString().split('T')[0],
         });
+        setOrderInfo({ orderId, paymentId: '—', method: 'Cash on Delivery' });
         setOrderPlaced(true);
         clearCart();
         setIsSubmitting(false);

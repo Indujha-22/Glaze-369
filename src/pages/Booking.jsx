@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { services, vehicleTypes, timeSlots } from '../data/services';
+import { ref, push, serverTimestamp } from 'firebase/database';
+import { database } from '../config/firebase';
 import './Booking.css';
 
 function Booking() {
@@ -27,8 +29,18 @@ function Booking() {
         e.preventDefault();
         setIsLoading(true);
 
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        try {
+            const bookingsRef = ref(database, 'bookings');
+            await push(bookingsRef, {
+                ...formData,
+                status: 'Pending',
+                createdAt: serverTimestamp(),
+                date: formData.preferredDate,
+                time: formData.preferredTime,
+            });
+        } catch (err) {
+            console.error('Failed to save booking:', err);
+        }
 
         setIsLoading(false);
         setIsSubmitted(true);

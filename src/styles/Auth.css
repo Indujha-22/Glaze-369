@@ -384,6 +384,31 @@
   text-decoration: underline;
 }
 
+/* Admin Login Link */
+.admin-login-link {
+  margin-top: 1rem;
+}
+
+.admin-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 8px;
+  color: #a78bfa !important;
+  font-size: 0.85rem;
+  transition: all 0.3s ease;
+}
+
+.admin-link:hover {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.5);
+  color: #c4b5fd !important;
+  text-decoration: none;
+}
+
 /* Responsive Design */
 @media (max-width: 480px) {
   .auth-card {

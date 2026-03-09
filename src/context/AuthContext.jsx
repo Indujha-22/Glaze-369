@@ -6,7 +6,8 @@ import {
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword
 } from 'firebase/auth';
-import { auth, googleProvider } from '../config/firebase';
+import { ref, set, get, serverTimestamp } from 'firebase/database';
+import { auth, googleProvider, database } from '../config/firebase';
 
 const AuthContext = createContext({});
 
@@ -74,10 +75,30 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    // Monitor authentication state
+    // Monitor authentication state & save user profile to Realtime Database
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             setUser(currentUser);
+            if (currentUser) {
+                try {
+                    const userRef = ref(database, `users/${currentUser.uid}`);
+                    const snapshot = await get(userRef);
+                    const existing = snapshot.val() || {};
+                    await set(userRef, {
+                        ...existing,
+                        uid: currentUser.uid,
+                        email: currentUser.email || '',
+                        displayName: currentUser.displayName || existing.displayName || '',
+                        photoURL: currentUser.photoURL || existing.photoURL || '',
+                        provider: currentUser.providerData?.[0]?.providerId || 'email',
+                        emailVerified: currentUser.emailVerified || false,
+                        lastLogin: Date.now(),
+                        createdAt: existing.createdAt || Date.now(),
+                    });
+                } catch (err) {
+                    console.error('Error saving user profile to DB:', err);
+                }
+            }
             setLoading(false);
         });
 

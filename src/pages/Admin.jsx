@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { ref, get } from 'firebase/database';
+import { ref, get, onValue, update, remove, push, set } from 'firebase/database';
 import { database } from '../config/firebase';
+import { products as localProducts, categories as localCategories } from '../data/products';
 import './Admin.css';
 
 /* ═══════════════════════════════════════════════════
@@ -14,7 +15,9 @@ function AdminLogin({ onLogin }) {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const { signInWithEmail, logout } = useAuth();
+    const [role, setRole] = useState('admin');
+    const { signInWithEmail, signInWithGoogle, logout } = useAuth();
+    const navigate = useNavigate();
 
     // Hardcoded admin credentials
     const ADMIN_EMAIL = 'adminb4u@gmail.com';
@@ -29,7 +32,26 @@ function AdminLogin({ onLogin }) {
         setLoading(true);
         setError('');
 
-        // Check hardcoded admin credentials first
+        if (role === 'user') {
+            // User login → redirect to user dashboard
+            try {
+                await signInWithEmail(email, password);
+                navigate('/dashboard');
+            } catch (err) {
+                const msg =
+                    err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential'
+                        ? 'Invalid email or password'
+                        : err.code === 'auth/too-many-requests'
+                            ? 'Too many failed attempts. Please try again later.'
+                            : err.message || 'Failed to sign in';
+                setError(msg);
+            } finally {
+                setLoading(false);
+            }
+            return;
+        }
+
+        // Admin login flow
         if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
             onLogin({ email: ADMIN_EMAIL, uid: 'local-admin' });
             setLoading(false);
@@ -38,7 +60,6 @@ function AdminLogin({ onLogin }) {
 
         try {
             const user = await signInWithEmail(email, password);
-            // Verify admin status from database
             const adminRef = ref(database, `admins/${user.uid}`);
             const snapshot = await get(adminRef);
             if (!snapshot.exists() || snapshot.val().isAdmin !== true) {
@@ -60,6 +81,33 @@ function AdminLogin({ onLogin }) {
         }
     };
 
+    const handleGoogleLogin = async () => {
+        setLoading(true);
+        setError('');
+        try {
+            if (role === 'user') {
+                await signInWithGoogle();
+                navigate('/dashboard');
+            } else {
+                const user = await signInWithGoogle();
+                const adminRef = ref(database, `admins/${user.uid}`);
+                const snapshot = await get(adminRef);
+                if (!snapshot.exists() || snapshot.val().isAdmin !== true) {
+                    setError('Access denied. You do not have admin privileges.');
+                    await logout();
+                    return;
+                }
+                onLogin(user);
+            }
+        } catch (err) {
+            if (err.code !== 'auth/popup-closed-by-user') {
+                setError(err.message || 'Failed to sign in with Google');
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="admin-login">
             <div className="login-card">
@@ -67,19 +115,38 @@ function AdminLogin({ onLogin }) {
                     <span className="logo-text">Glaze</span>
                     <span className="logo-accent">369</span>
                 </div>
-                <div className="admin-shield">🔐</div>
-                <h2>Admin Panel</h2>
-                <p className="login-subtitle">Sign in with your admin credentials</p>
+                <div className="admin-shield">{role === 'admin' ? '🔐' : '👤'}</div>
+                <h2>{role === 'admin' ? 'Admin Panel' : 'User Login'}</h2>
+                <p className="login-subtitle">{role === 'admin' ? 'Sign in with your admin credentials' : 'Sign in to your account'}</p>
+
+                {/* Role Toggle */}
+                <div className="role-toggle">
+                    <button
+                        type="button"
+                        className={`role-btn ${role === 'admin' ? 'active' : ''}`}
+                        onClick={() => { setRole('admin'); setError(''); }}
+                    >
+                        🔐 Admin
+                    </button>
+                    <button
+                        type="button"
+                        className={`role-btn ${role === 'user' ? 'active' : ''}`}
+                        onClick={() => { setRole('user'); setError(''); }}
+                    >
+                        👤 User
+                    </button>
+                </div>
+
                 <form onSubmit={handleSubmit}>
                     {error && <div className="login-error">⚠️ {error}</div>}
                     <div className="form-group">
-                        <label className="form-label">Admin Email</label>
+                        <label className="form-label">{role === 'admin' ? 'Admin Email' : 'Email'}</label>
                         <input
                             type="email"
                             className="form-input"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            placeholder="admin@glaze369.com"
+                            placeholder={role === 'admin' ? 'admin@glaze369.com' : 'you@example.com'}
                             disabled={loading}
                             required
                         />
@@ -106,11 +173,24 @@ function AdminLogin({ onLogin }) {
                         </div>
                     </div>
                     <button type="submit" className="btn btn-primary login-btn" disabled={loading}>
-                        {loading ? 'Verifying...' : '🔒 Sign In as Admin'}
+                        {loading ? 'Verifying...' : role === 'admin' ? '🔒 Sign In as Admin' : '🔓 Sign In as User'}
                     </button>
                 </form>
+
+                <div className="login-divider"><span>or</span></div>
+
+                <button
+                    type="button"
+                    className="btn btn-google"
+                    onClick={handleGoogleLogin}
+                    disabled={loading}
+                >
+                    <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/><path fill="#FF3D00" d="m6.306 14.691 6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/></svg>
+                    {loading ? 'Signing in...' : `Sign in with Google as ${role === 'admin' ? 'Admin' : 'User'}`}
+                </button>
+
                 <p className="login-hint">
-                    Admin accounts must be pre-registered in Firebase.
+                    {role === 'admin' ? 'Admin accounts must be pre-registered in Firebase.' : 'Don\'t have an account? Contact admin or sign up.'}
                 </p>
             </div>
         </div>
@@ -118,30 +198,127 @@ function AdminLogin({ onLogin }) {
 }
 
 /* ═══════════════════════════════════════════════════
-   DASHBOARD
+   DASHBOARD (Dynamic Analytics from Firebase)
    ═══════════════════════════════════════════════════ */
 function Dashboard() {
+    const [bookings, setBookings] = useState([]);
+    const [orders, setOrders] = useState([]);
+    const [customers, setCustomers] = useState([]);
+    const [registeredUsers, setRegisteredUsers] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let loadCount = 0;
+        const checkLoaded = () => { loadCount++; if (loadCount >= 3) setLoading(false); };
+
+        const unsub1 = onValue(ref(database, 'bookings'), snap => {
+            const data = snap.val();
+            if (data) setBookings(Object.entries(data).map(([k, v]) => ({ firebaseKey: k, ...v })).reverse());
+            else setBookings([]);
+            checkLoaded();
+        });
+        const unsub2 = onValue(ref(database, 'orders'), snap => {
+            const data = snap.val();
+            if (data) setOrders(Object.entries(data).map(([k, v]) => ({ firebaseKey: k, ...v })).reverse());
+            else setOrders([]);
+            checkLoaded();
+        });
+        const unsub3 = onValue(ref(database, 'users'), snap => {
+            const data = snap.val();
+            if (data) {
+                const list = Object.entries(data).map(([uid, v]) => ({ uid, ...v }));
+                list.sort((a, b) => (b.lastLogin || 0) - (a.lastLogin || 0));
+                setRegisteredUsers(list);
+            } else {
+                setRegisteredUsers([]);
+            }
+            checkLoaded();
+        });
+        return () => { unsub1(); unsub2(); unsub3(); };
+    }, []);
+
+    // Derive unique customers from bookings + orders
+    useEffect(() => {
+        const map = {};
+        bookings.forEach(b => {
+            const key = b.mobile || b.name;
+            if (!key) return;
+            if (!map[key]) map[key] = { name: b.name, mobile: b.mobile, email: '', bookings: 0, orders: 0, totalSpent: 0 };
+            map[key].bookings += 1;
+        });
+        orders.forEach(o => {
+            const key = o.mobile || o.customer;
+            if (!key) return;
+            if (!map[key]) map[key] = { name: o.customer, mobile: o.mobile, email: o.email || '', bookings: 0, orders: 0, totalSpent: 0 };
+            map[key].orders += 1;
+            map[key].totalSpent += Number(o.total) || 0;
+            if (o.email) map[key].email = o.email;
+        });
+        setCustomers(Object.values(map));
+    }, [bookings, orders]);
+
+    // --- Analytics computations ---
+    const pendingBookings = bookings.filter(b => b.status === 'Pending').length;
+    const confirmedBookings = bookings.filter(b => b.status === 'Confirmed').length;
+    const completedBookings = bookings.filter(b => b.status === 'Completed').length;
+    const inProgressBookings = bookings.filter(b => b.status === 'In Progress').length;
+    const cancelledBookings = bookings.filter(b => b.status === 'Cancelled').length;
+
+    const onlineRevenue = orders.filter(o => o.payment === 'Razorpay').reduce((s, o) => s + (Number(o.total) || 0), 0);
+    const codRevenue = orders.filter(o => o.payment === 'COD' || o.payment === 'Cash on Delivery').reduce((s, o) => s + (Number(o.total) || 0), 0);
+    const totalRevenue = orders.reduce((s, o) => s + (Number(o.total) || 0), 0);
+    const avgOrderValue = orders.length > 0 ? Math.round(totalRevenue / orders.length) : 0;
+
+    // Monthly revenue (last 6 months)
+    const getMonthlyRevenue = () => {
+        const months = [];
+        const now = new Date();
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const label = d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+            const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const revenue = orders
+                .filter(o => (o.date || '').startsWith(monthStr) || (o.createdAt && new Date(o.createdAt).toISOString().startsWith(monthStr)))
+                .reduce((s, o) => s + (Number(o.total) || 0), 0);
+            const bookingCount = bookings
+                .filter(b => (b.preferredDate || b.date || '').startsWith(monthStr) || (b.createdAt && new Date(b.createdAt).toISOString().startsWith(monthStr)))
+                .length;
+            months.push({ label, revenue, bookings: bookingCount });
+        }
+        return months;
+    };
+    const monthlyData = getMonthlyRevenue();
+    const maxMonthlyRevenue = Math.max(...monthlyData.map(m => m.revenue), 1);
+
+    // Top 5 customers by spending
+    const topCustomers = [...customers].sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 5);
+
+    // Popular services from bookings
+    const serviceCounts = {};
+    bookings.forEach(b => {
+        const svc = b.serviceType;
+        if (svc) serviceCounts[svc] = (serviceCounts[svc] || 0) + 1;
+    });
+    const popularServices = Object.entries(serviceCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const maxServiceCount = popularServices.length > 0 ? popularServices[0][1] : 1;
+
     const stats = [
-        { label: 'Total Bookings', value: '156', change: '+12%', icon: '📅', color: '#3b82f6' },
-        { label: 'Pending Bookings', value: '23', change: '+5', icon: '⏳', color: '#f59e0b' },
-        { label: 'Product Orders', value: '89', change: '+8%', icon: '📦', color: '#8b5cf6' },
-        { label: 'Revenue', value: '₹2.4L', change: '+15%', icon: '💰', color: '#10b981' },
-        { label: 'Customers', value: '342', change: '+22', icon: '👥', color: '#ec4899' },
-        { label: 'Payments', value: '₹1.8L', change: '+18%', icon: '💳', color: '#06b6d4' },
+        { label: 'Total Bookings', value: bookings.length, icon: '📅', color: '#3b82f6' },
+        { label: 'Pending Bookings', value: pendingBookings, icon: '⏳', color: '#f59e0b' },
+        { label: 'Product Orders', value: orders.length, icon: '📦', color: '#8b5cf6' },
+        { label: 'Online Revenue', value: onlineRevenue ? `₹${onlineRevenue.toLocaleString('en-IN')}` : '₹0', icon: '💰', color: '#10b981' },
+        { label: 'Total Revenue', value: totalRevenue ? `₹${totalRevenue.toLocaleString('en-IN')}` : '₹0', icon: '💵', color: '#06b6d4' },
+        { label: 'Total Customers', value: customers.length, icon: '👥', color: '#ec4899' },
+        { label: 'Registered Users', value: registeredUsers.length, icon: '🔐', color: '#6366f1' },
+        { label: 'Avg Order Value', value: avgOrderValue ? `₹${avgOrderValue.toLocaleString('en-IN')}` : '₹0', icon: '📈', color: '#f97316' },
     ];
 
-    const recentBookings = [
-        { id: 'BK001', customer: 'Rajesh Kumar', service: 'Ceramic Coating', date: '2026-02-10', status: 'Confirmed' },
-        { id: 'BK002', customer: 'Priya S', service: 'Full Detail', date: '2026-02-10', status: 'Pending' },
-        { id: 'BK003', customer: 'Karthik V', service: 'Interior Cleaning', date: '2026-02-09', status: 'Completed' },
-        { id: 'BK004', customer: 'Anitha R', service: 'Paint Correction', date: '2026-02-09', status: 'In Progress' },
-    ];
+    const recentBookings = bookings.slice(0, 5);
+    const recentOrders = orders.slice(0, 5);
 
-    const recentPayments = [
-        { id: 'pay_L1x2y3', customer: 'Rajesh Kumar', amount: '₹15,000', method: 'UPI', status: 'Success', date: '2026-02-10' },
-        { id: 'pay_A4b5c6', customer: 'Priya S', amount: '₹4,500', method: 'Card', status: 'Success', date: '2026-02-10' },
-        { id: 'pay_D7e8f9', customer: 'Vikram S', amount: '₹2,999', method: 'NetBanking', status: 'Failed', date: '2026-02-09' },
-    ];
+    if (loading) {
+        return <div style={{ textAlign: 'center', padding: '3rem', color: 'rgba(255,255,255,0.4)' }}>Loading dashboard...</div>;
+    }
 
     return (
         <div className="admin-dashboard">
@@ -157,22 +334,171 @@ function Dashboard() {
                             <span className="stat-value">{stat.value}</span>
                             <span className="stat-label">{stat.label}</span>
                         </div>
-                        <span className="stat-change positive">{stat.change}</span>
                     </div>
                 ))}
             </div>
 
+            {/* ── Analytics Charts Section ── */}
+            <div className="dash-grid">
+                {/* Monthly Revenue Chart */}
+                <div className="dashboard-section">
+                    <div className="section-head"><h3>📊 Monthly Revenue</h3></div>
+                    <div className="chart-container">
+                        <div className="bar-chart">
+                            {monthlyData.map((m, i) => (
+                                <div key={i} className="bar-group">
+                                    <div className="bar-value">₹{m.revenue > 0 ? (m.revenue >= 1000 ? `${(m.revenue / 1000).toFixed(1)}K` : m.revenue) : '0'}</div>
+                                    <div className="bar-track">
+                                        <div className="bar-fill" style={{ height: `${(m.revenue / maxMonthlyRevenue) * 100}%`, background: 'linear-gradient(180deg, #10b981, #059669)' }} />
+                                    </div>
+                                    <div className="bar-label">{m.label}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Booking Status Breakdown */}
+                <div className="dashboard-section">
+                    <div className="section-head"><h3>📋 Booking Status</h3></div>
+                    <div className="status-breakdown">
+                        {[
+                            { label: 'Pending', count: pendingBookings, color: '#f59e0b' },
+                            { label: 'Confirmed', count: confirmedBookings, color: '#3b82f6' },
+                            { label: 'In Progress', count: inProgressBookings, color: '#8b5cf6' },
+                            { label: 'Completed', count: completedBookings, color: '#10b981' },
+                            { label: 'Cancelled', count: cancelledBookings, color: '#ef4444' },
+                        ].map((s, i) => (
+                            <div key={i} className="status-row">
+                                <div className="status-row-label">
+                                    <span className="status-dot" style={{ background: s.color }} />
+                                    <span>{s.label}</span>
+                                </div>
+                                <div className="status-row-bar">
+                                    <div className="status-bar-track">
+                                        <div className="status-bar-fill" style={{ width: `${bookings.length > 0 ? (s.count / bookings.length) * 100 : 0}%`, background: s.color }} />
+                                    </div>
+                                    <span className="status-row-count">{s.count}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* ── Revenue Split + Popular Services ── */}
+            <div className="dash-grid">
+                {/* Revenue Split */}
+                <div className="dashboard-section">
+                    <div className="section-head"><h3>💳 Revenue Split</h3></div>
+                    <div className="revenue-split">
+                        <div className="rev-item">
+                            <span className="rev-label">Online (Razorpay)</span>
+                            <span className="rev-value" style={{ color: '#10b981' }}>₹{onlineRevenue.toLocaleString('en-IN')}</span>
+                            <div className="rev-bar"><div className="rev-bar-fill" style={{ width: `${totalRevenue > 0 ? (onlineRevenue / totalRevenue) * 100 : 0}%`, background: '#10b981' }} /></div>
+                        </div>
+                        <div className="rev-item">
+                            <span className="rev-label">Cash on Delivery</span>
+                            <span className="rev-value" style={{ color: '#f59e0b' }}>₹{codRevenue.toLocaleString('en-IN')}</span>
+                            <div className="rev-bar"><div className="rev-bar-fill" style={{ width: `${totalRevenue > 0 ? (codRevenue / totalRevenue) * 100 : 0}%`, background: '#f59e0b' }} /></div>
+                        </div>
+                        <div className="rev-total">
+                            <span>Total Revenue</span>
+                            <span className="text-accent" style={{ fontSize: '1.4rem', fontWeight: 700 }}>₹{totalRevenue.toLocaleString('en-IN')}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Popular Services */}
+                <div className="dashboard-section">
+                    <div className="section-head"><h3>🔥 Popular Services</h3></div>
+                    <div className="popular-services">
+                        {popularServices.length === 0 && <p style={{ color: 'rgba(255,255,255,0.3)', textAlign: 'center', padding: '1rem' }}>No service data yet</p>}
+                        {popularServices.map(([name, count], i) => (
+                            <div key={i} className="service-pop-row">
+                                <div className="service-pop-info">
+                                    <span className="service-pop-rank">#{i + 1}</span>
+                                    <span className="service-pop-name">{name}</span>
+                                </div>
+                                <div className="service-pop-bar-wrap">
+                                    <div className="service-pop-bar" style={{ width: `${(count / maxServiceCount) * 100}%` }} />
+                                    <span className="service-pop-count">{count} bookings</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* ── Top Customers ── */}
+            <div className="dash-grid">
+                <div className="dashboard-section">
+                    <div className="section-head"><h3>🏆 Top Customers</h3><Link to="/admin/customers" className="view-all">View All →</Link></div>
+                    <div className="data-table">
+                        <table>
+                            <thead><tr><th>#</th><th>Customer</th><th>Mobile</th><th>Bookings</th><th>Orders</th><th>Total Spent</th></tr></thead>
+                            <tbody>
+                                {topCustomers.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>No customer data yet</td></tr>}
+                                {topCustomers.map((c, i) => (
+                                    <tr key={i}>
+                                        <td><span className="top-rank">{i + 1}</span></td>
+                                        <td><strong>{c.name}</strong></td>
+                                        <td>{c.mobile || '—'}</td>
+                                        <td>{c.bookings}</td>
+                                        <td>{c.orders}</td>
+                                        <td className="text-accent">₹{c.totalSpent.toLocaleString('en-IN')}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            {/* ── Registered Users ── */}
+            <div className="dash-grid">
+                <div className="dashboard-section full-width">
+                    <div className="section-head"><h3>🔐 Registered Users</h3><span className="dash-date">{registeredUsers.length} users</span></div>
+                    <div className="data-table">
+                        <table>
+                            <thead><tr><th>#</th><th>User</th><th>Email</th><th>Provider</th><th>Verified</th><th>Created</th><th>Last Login</th></tr></thead>
+                            <tbody>
+                                {registeredUsers.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>No registered users yet</td></tr>}
+                                {registeredUsers.map((u, i) => (
+                                    <tr key={u.uid}>
+                                        <td>{i + 1}</td>
+                                        <td>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                {u.photoURL ? <img src={u.photoURL} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} /> : <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,193,7,0.15)', color: '#ffc107', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700 }}>{(u.email || '?')[0].toUpperCase()}</span>}
+                                                <strong>{u.displayName || u.email?.split('@')[0] || 'User'}</strong>
+                                            </div>
+                                        </td>
+                                        <td>{u.email}</td>
+                                        <td><span className={`method-badge ${u.provider === 'google.com' ? 'google' : 'email'}`}>{u.provider === 'google.com' ? '🔵 Google' : '📧 Email'}</span></td>
+                                        <td><span className={`status-badge ${u.emailVerified ? 'completed' : 'pending'}`}>{u.emailVerified ? '✓ Verified' : 'Pending'}</span></td>
+                                        <td>{u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
+                                        <td>{u.lastLogin ? new Date(u.lastLogin).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            {/* ── Recent Bookings & Orders ── */}
             <div className="dash-grid">
                 <div className="dashboard-section">
                     <div className="section-head"><h3>Recent Bookings</h3><Link to="/admin/bookings" className="view-all">View All →</Link></div>
                     <div className="data-table">
                         <table>
-                            <thead><tr><th>ID</th><th>Customer</th><th>Service</th><th>Date</th><th>Status</th></tr></thead>
+                            <thead><tr><th>Customer</th><th>Service</th><th>Date</th><th>Status</th></tr></thead>
                             <tbody>
-                                {recentBookings.map(b => (
-                                    <tr key={b.id}>
-                                        <td><strong>{b.id}</strong></td><td>{b.customer}</td><td>{b.service}</td><td>{b.date}</td>
-                                        <td><span className={`status-badge ${b.status.toLowerCase().replace(' ', '-')}`}>{b.status}</span></td>
+                                {recentBookings.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>No bookings yet</td></tr>}
+                                {recentBookings.map((b, i) => (
+                                    <tr key={i}>
+                                        <td>{b.name}</td><td>{b.serviceType}</td><td>{b.date || b.preferredDate}</td>
+                                        <td><span className={`status-badge ${(b.status || 'pending').toLowerCase().replace(' ', '-')}`}>{b.status || 'Pending'}</span></td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -180,16 +506,18 @@ function Dashboard() {
                     </div>
                 </div>
                 <div className="dashboard-section">
-                    <div className="section-head"><h3>Recent Payments</h3><Link to="/admin/payments" className="view-all">View All →</Link></div>
+                    <div className="section-head"><h3>Recent Orders</h3><Link to="/admin/orders" className="view-all">View All →</Link></div>
                     <div className="data-table">
                         <table>
-                            <thead><tr><th>Payment ID</th><th>Customer</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead>
+                            <thead><tr><th>Customer</th><th>Total</th><th>Payment</th><th>Status</th></tr></thead>
                             <tbody>
-                                {recentPayments.map(p => (
-                                    <tr key={p.id}>
-                                        <td><code>{p.id}</code></td><td>{p.customer}</td>
-                                        <td className="text-accent">{p.amount}</td><td>{p.method}</td>
-                                        <td><span className={`status-badge ${p.status.toLowerCase()}`}>{p.status}</span></td>
+                                {recentOrders.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>No orders yet</td></tr>}
+                                {recentOrders.map((o, i) => (
+                                    <tr key={i}>
+                                        <td>{o.customer}</td>
+                                        <td className="text-accent">₹{Number(o.total).toLocaleString('en-IN')}</td>
+                                        <td>{o.payment}</td>
+                                        <td><span className={`status-badge ${(o.status || 'pending').toLowerCase()}`}>{o.status || 'Pending'}</span></td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -205,59 +533,80 @@ function Dashboard() {
    BOOKINGS MANAGEMENT
    ═══════════════════════════════════════════════════ */
 function BookingsManagement() {
-    const [bookings, setBookings] = useState([
-        { id: 'BK001', customer: 'Rajesh Kumar', mobile: '9876543210', vehicle: 'BMW 5 Series', service: 'Ceramic Coating', date: '2026-02-10', time: '10:00 AM', status: 'Confirmed' },
-        { id: 'BK002', customer: 'Priya Shanmugam', mobile: '9876543211', vehicle: 'Audi Q5', service: 'Full Detail Package', date: '2026-02-10', time: '2:00 PM', status: 'Pending' },
-        { id: 'BK003', customer: 'Karthik Venkatesh', mobile: '9876543212', vehicle: 'Mercedes C-Class', service: 'Interior Deep Cleaning', date: '2026-02-09', time: '11:00 AM', status: 'Completed' },
-        { id: 'BK004', customer: 'Anitha Rajan', mobile: '9876543213', vehicle: 'Honda City', service: 'Paint Correction', date: '2026-02-09', time: '3:00 PM', status: 'In Progress' },
-        { id: 'BK005', customer: 'Vikram Sundaram', mobile: '9876543214', vehicle: 'Porsche 911', service: 'PPF Installation', date: '2026-02-11', time: '9:00 AM', status: 'Confirmed' },
-    ]);
+    const [bookings, setBookings] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('All Status');
     const [search, setSearch] = useState('');
 
+    useEffect(() => {
+        const unsub = onValue(ref(database, 'bookings'), snap => {
+            const data = snap.val();
+            if (data) {
+                const list = Object.entries(data).map(([k, v]) => ({ firebaseKey: k, ...v })).reverse();
+                setBookings(list);
+            } else {
+                setBookings([]);
+            }
+            setLoading(false);
+        });
+        return () => unsub();
+    }, []);
+
     const filtered = bookings.filter(b => {
         const matchStatus = filter === 'All Status' || b.status === filter;
-        const matchSearch = b.customer.toLowerCase().includes(search.toLowerCase()) || b.id.toLowerCase().includes(search.toLowerCase());
+        const matchSearch = (b.name || '').toLowerCase().includes(search.toLowerCase()) || (b.mobile || '').includes(search);
         return matchStatus && matchSearch;
     });
 
-    const updateStatus = (id, newStatus) => {
-        setBookings(prev => prev.map(b => b.id === id ? { ...b, status: newStatus } : b));
+    const updateStatus = async (firebaseKey, newStatus) => {
+        await update(ref(database, `bookings/${firebaseKey}`), { status: newStatus });
+    };
+
+    const deleteBooking = async (firebaseKey) => {
+        if (window.confirm('Delete this booking?')) {
+            await remove(ref(database, `bookings/${firebaseKey}`));
+        }
     };
 
     return (
         <div className="admin-bookings">
-            <div className="page-header"><h2>Booking Management</h2><button className="btn btn-primary">+ New Booking</button></div>
+            <div className="page-header"><h2>Booking Management</h2><span className="dash-date">{bookings.length} total</span></div>
             <div className="filters-row">
-                <input type="text" className="form-input search-input" placeholder="Search by name or ID..." value={search} onChange={e => setSearch(e.target.value)} />
+                <input type="text" className="form-input search-input" placeholder="Search by name or mobile..." value={search} onChange={e => setSearch(e.target.value)} />
                 <select className="form-select filter-select" value={filter} onChange={e => setFilter(e.target.value)}>
                     {['All Status', 'Pending', 'Confirmed', 'In Progress', 'Completed', 'Cancelled'].map(s => <option key={s}>{s}</option>)}
                 </select>
             </div>
-            <div className="data-table">
-                <table>
-                    <thead><tr><th>ID</th><th>Customer</th><th>Mobile</th><th>Vehicle</th><th>Service</th><th>Date & Time</th><th>Status</th><th>Actions</th></tr></thead>
-                    <tbody>
-                        {filtered.map(b => (
-                            <tr key={b.id}>
-                                <td><strong>{b.id}</strong></td><td>{b.customer}</td><td>{b.mobile}</td><td>{b.vehicle}</td><td>{b.service}</td>
-                                <td>{b.date}<br /><small>{b.time}</small></td>
-                                <td>
-                                    <select className="status-select" value={b.status} onChange={e => updateStatus(b.id, e.target.value)}>
-                                        {['Pending', 'Confirmed', 'In Progress', 'Completed', 'Cancelled'].map(s => <option key={s}>{s}</option>)}
-                                    </select>
-                                </td>
-                                <td>
-                                    <div className="action-buttons">
-                                        <button className="action-btn" title="WhatsApp" onClick={() => window.open(`https://wa.me/91${b.mobile}`)}>💬</button>
-                                        <button className="action-btn delete" title="Delete">🗑</button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+            {loading ? <div style={{ textAlign: 'center', padding: '2rem', color: 'rgba(255,255,255,0.4)' }}>Loading...</div> : (
+                <div className="data-table">
+                    <table>
+                        <thead><tr><th>Customer</th><th>Mobile</th><th>Vehicle</th><th>Service</th><th>Date & Time</th><th>Status</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            {filtered.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>No bookings found</td></tr>}
+                            {filtered.map(b => (
+                                <tr key={b.firebaseKey}>
+                                    <td><strong>{b.name}</strong></td>
+                                    <td>{b.mobile}</td>
+                                    <td>{b.vehicleType}</td>
+                                    <td>{b.serviceType}</td>
+                                    <td>{b.preferredDate || b.date}<br /><small>{b.preferredTime || b.time}</small></td>
+                                    <td>
+                                        <select className="status-select" value={b.status || 'Pending'} onChange={e => updateStatus(b.firebaseKey, e.target.value)}>
+                                            {['Pending', 'Confirmed', 'In Progress', 'Completed', 'Cancelled'].map(s => <option key={s}>{s}</option>)}
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <div className="action-buttons">
+                                            <button className="action-btn" title="WhatsApp" onClick={() => window.open(`https://wa.me/91${b.mobile}`)}>💬</button>
+                                            <button className="action-btn delete" title="Delete" onClick={() => deleteBooking(b.firebaseKey)}>🗑</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
             <div className="table-footer">{filtered.length} of {bookings.length} bookings</div>
         </div>
     );
@@ -267,49 +616,83 @@ function BookingsManagement() {
    ORDERS MANAGEMENT
    ═══════════════════════════════════════════════════ */
 function OrdersManagement() {
-    const [orders, setOrders] = useState([
-        { id: 'ORD001', customer: 'Rajesh Kumar', items: 3, total: '₹6,997', payment: 'Razorpay', paymentId: 'pay_L1x2y3', date: '2026-02-10', status: 'Delivered' },
-        { id: 'ORD002', customer: 'Priya S', items: 1, total: '₹4,999', payment: 'COD', paymentId: '—', date: '2026-02-10', status: 'Shipped' },
-        { id: 'ORD003', customer: 'Karthik V', items: 2, total: '₹2,198', payment: 'Razorpay', paymentId: 'pay_M2n3o4', date: '2026-02-09', status: 'Processing' },
-        { id: 'ORD004', customer: 'Anitha R', items: 4, total: '₹3,296', payment: 'COD', paymentId: '—', date: '2026-02-09', status: 'Pending' },
-        { id: 'ORD005', customer: 'Vikram S', items: 1, total: '₹1,499', payment: 'Razorpay', paymentId: 'pay_P5q6r7', date: '2026-02-08', status: 'Cancelled' },
-    ]);
+    const [orders, setOrders] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('All');
+    const [search, setSearch] = useState('');
 
-    const filtered = filter === 'All' ? orders : orders.filter(o => o.status === filter);
+    useEffect(() => {
+        const unsub = onValue(ref(database, 'orders'), snap => {
+            const data = snap.val();
+            if (data) {
+                const list = Object.entries(data).map(([k, v]) => ({ firebaseKey: k, ...v })).reverse();
+                setOrders(list);
+            } else {
+                setOrders([]);
+            }
+            setLoading(false);
+        });
+        return () => unsub();
+    }, []);
 
-    const updateStatus = (id, status) => setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+    const filtered = orders.filter(o => {
+        const matchStatus = filter === 'All' || o.status === filter;
+        const matchSearch = (o.customer || '').toLowerCase().includes(search.toLowerCase()) || (o.orderId || '').toLowerCase().includes(search.toLowerCase());
+        return matchStatus && matchSearch;
+    });
+
+    const updateStatus = async (firebaseKey, status) => {
+        await update(ref(database, `orders/${firebaseKey}`), { status });
+    };
+
+    const deleteOrder = async (firebaseKey) => {
+        if (window.confirm('Delete this order?')) {
+            await remove(ref(database, `orders/${firebaseKey}`));
+        }
+    };
 
     return (
         <div className="admin-orders">
-            <div className="page-header"><h2>Product Orders</h2></div>
+            <div className="page-header"><h2>Product Orders</h2><span className="dash-date">{orders.length} total</span></div>
             <div className="filters-row">
-                <input type="text" className="form-input search-input" placeholder="Search orders..." />
+                <input type="text" className="form-input search-input" placeholder="Search by customer or order ID..." value={search} onChange={e => setSearch(e.target.value)} />
                 <select className="form-select filter-select" value={filter} onChange={e => setFilter(e.target.value)}>
                     {['All', 'Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map(s => <option key={s}>{s}</option>)}
                 </select>
             </div>
-            <div className="data-table">
-                <table>
-                    <thead><tr><th>Order ID</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
-                    <tbody>
-                        {filtered.map(o => (
-                            <tr key={o.id}>
-                                <td><strong>{o.id}</strong></td><td>{o.customer}</td><td>{o.items} items</td>
-                                <td className="text-accent">{o.total}</td>
-                                <td><span className={`payment-badge ${o.payment.toLowerCase()}`}>{o.payment}</span>{o.paymentId !== '—' && <><br /><code className="pay-id">{o.paymentId}</code></>}</td>
-                                <td>{o.date}</td>
-                                <td>
-                                    <select className="status-select" value={o.status} onChange={e => updateStatus(o.id, e.target.value)}>
-                                        {['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map(s => <option key={s}>{s}</option>)}
-                                    </select>
-                                </td>
-                                <td><button className="action-btn">View</button></td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+            {loading ? <div style={{ textAlign: 'center', padding: '2rem', color: 'rgba(255,255,255,0.4)' }}>Loading...</div> : (
+                <div className="data-table">
+                    <table>
+                        <thead><tr><th>Order ID</th><th>Customer</th><th>Mobile</th><th>Items</th><th>Total</th><th>Payment</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            {filtered.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>No orders found</td></tr>}
+                            {filtered.map(o => (
+                                <tr key={o.firebaseKey}>
+                                    <td><code>{o.orderId?.slice(-8) || '—'}</code></td>
+                                    <td><strong>{o.customer}</strong><br /><small>{o.email}</small></td>
+                                    <td>{o.mobile}</td>
+                                    <td>{o.itemCount || (Array.isArray(o.items) ? o.items.length : '—')} items</td>
+                                    <td className="text-accent">₹{Number(o.total).toLocaleString('en-IN')}</td>
+                                    <td><span className={`payment-badge ${(o.payment || '').toLowerCase()}`}>{o.payment}</span>{o.paymentId && o.paymentId !== '—' && <><br /><code className="pay-id">{o.paymentId}</code></>}</td>
+                                    <td>{o.date}</td>
+                                    <td>
+                                        <select className="status-select" value={o.status || 'Pending'} onChange={e => updateStatus(o.firebaseKey, e.target.value)}>
+                                            {['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map(s => <option key={s}>{s}</option>)}
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <div className="action-buttons">
+                                            <button className="action-btn" title="WhatsApp" onClick={() => window.open(`https://wa.me/91${o.mobile}`)}>💬</button>
+                                            <button className="action-btn delete" title="Delete" onClick={() => deleteOrder(o.firebaseKey)}>🗑</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+            <div className="table-footer">{filtered.length} of {orders.length} orders</div>
         </div>
     );
 }
@@ -318,42 +701,57 @@ function OrdersManagement() {
    PAYMENTS (RAZORPAY)
    ═══════════════════════════════════════════════════ */
 function PaymentsManagement() {
-    const [payments] = useState([
-        { id: 'pay_L1x2y3z4', orderId: 'order_A1b2c3', customer: 'Rajesh Kumar', email: 'rajesh@gmail.com', amount: 15000, method: 'UPI', status: 'captured', date: '2026-02-10 10:23 AM' },
-        { id: 'pay_M2n3o4p5', orderId: 'order_D4e5f6', customer: 'Priya S', email: 'priya@gmail.com', amount: 4500, method: 'Card', status: 'captured', date: '2026-02-10 02:15 PM' },
-        { id: 'pay_N5o6p7q8', orderId: 'order_G7h8i9', customer: 'Vikram S', email: 'vikram@gmail.com', amount: 2999, method: 'NetBanking', status: 'failed', date: '2026-02-09 11:45 AM' },
-        { id: 'pay_O8p9q0r1', orderId: 'order_J0k1l2', customer: 'Anitha R', email: 'anitha@gmail.com', amount: 6997, method: 'UPI', status: 'captured', date: '2026-02-09 04:30 PM' },
-        { id: 'pay_P1q2r3s4', orderId: 'order_M3n4o5', customer: 'Karthik V', email: 'karthik@gmail.com', amount: 1499, method: 'Wallet', status: 'refunded', date: '2026-02-08 09:10 AM' },
-    ]);
+    const [orders, setOrders] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    const totalRevenue = payments.filter(p => p.status === 'captured').reduce((s, p) => s + p.amount, 0);
-    const failedCount = payments.filter(p => p.status === 'failed').length;
+    useEffect(() => {
+        const unsub = onValue(ref(database, 'orders'), snap => {
+            const data = snap.val();
+            if (data) {
+                const list = Object.entries(data)
+                    .map(([k, v]) => ({ firebaseKey: k, ...v }))
+                    .filter(o => o.payment === 'Razorpay')
+                    .reverse();
+                setOrders(list);
+            } else {
+                setOrders([]);
+            }
+            setLoading(false);
+        });
+        return () => unsub();
+    }, []);
+
+    const totalRevenue = orders.filter(o => o.status !== 'Cancelled').reduce((s, o) => s + (Number(o.total) || 0), 0);
 
     return (
         <div className="admin-payments">
             <div className="page-header"><h2>💳 Payments (Razorpay)</h2></div>
             <div className="payment-stats">
-                <div className="pstat"><span className="pstat-label">Total Revenue</span><span className="pstat-value text-accent">₹{totalRevenue.toLocaleString()}</span></div>
-                <div className="pstat"><span className="pstat-label">Successful</span><span className="pstat-value" style={{ color: '#10b981' }}>{payments.filter(p => p.status === 'captured').length}</span></div>
-                <div className="pstat"><span className="pstat-label">Failed</span><span className="pstat-value" style={{ color: '#ef4444' }}>{failedCount}</span></div>
-                <div className="pstat"><span className="pstat-label">Refunded</span><span className="pstat-value" style={{ color: '#f59e0b' }}>{payments.filter(p => p.status === 'refunded').length}</span></div>
+                <div className="pstat"><span className="pstat-label">Total Revenue</span><span className="pstat-value text-accent">₹{totalRevenue.toLocaleString('en-IN')}</span></div>
+                <div className="pstat"><span className="pstat-label">Transactions</span><span className="pstat-value" style={{ color: '#10b981' }}>{orders.length}</span></div>
+                <div className="pstat"><span className="pstat-label">Delivered</span><span className="pstat-value" style={{ color: '#3b82f6' }}>{orders.filter(o => o.status === 'Delivered').length}</span></div>
+                <div className="pstat"><span className="pstat-label">Cancelled</span><span className="pstat-value" style={{ color: '#ef4444' }}>{orders.filter(o => o.status === 'Cancelled').length}</span></div>
             </div>
-            <div className="data-table">
-                <table>
-                    <thead><tr><th>Payment ID</th><th>Order ID</th><th>Customer</th><th>Amount</th><th>Method</th><th>Status</th><th>Date</th></tr></thead>
-                    <tbody>
-                        {payments.map(p => (
-                            <tr key={p.id}>
-                                <td><code>{p.id}</code></td><td><code>{p.orderId}</code></td><td>{p.customer}<br /><small>{p.email}</small></td>
-                                <td className="text-accent">₹{p.amount.toLocaleString()}</td>
-                                <td><span className="method-badge">{p.method}</span></td>
-                                <td><span className={`status-badge ${p.status}`}>{p.status}</span></td>
-                                <td>{p.date}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+            {loading ? <div style={{ textAlign: 'center', padding: '2rem', color: 'rgba(255,255,255,0.4)' }}>Loading...</div> : (
+                <div className="data-table">
+                    <table>
+                        <thead><tr><th>Payment ID</th><th>Order ID</th><th>Customer</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+                        <tbody>
+                            {orders.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>No Razorpay payments yet</td></tr>}
+                            {orders.map(o => (
+                                <tr key={o.firebaseKey}>
+                                    <td><code>{o.paymentId || '—'}</code></td>
+                                    <td><code>{o.orderId?.slice(-10) || '—'}</code></td>
+                                    <td>{o.customer}<br /><small>{o.email}</small></td>
+                                    <td className="text-accent">₹{Number(o.total).toLocaleString('en-IN')}</td>
+                                    <td><span className={`status-badge ${(o.status || 'pending').toLowerCase()}`}>{o.status}</span></td>
+                                    <td>{o.date}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     );
 }
@@ -362,40 +760,188 @@ function PaymentsManagement() {
    CUSTOMERS
    ═══════════════════════════════════════════════════ */
 function CustomersManagement() {
-    const [customers] = useState([
-        { id: 1, name: 'Rajesh Kumar', email: 'rajesh@gmail.com', mobile: '9876543210', orders: 5, totalSpent: '₹32,500', joined: '2025-11-10', lastVisit: '2026-02-10' },
-        { id: 2, name: 'Priya Shanmugam', email: 'priya@gmail.com', mobile: '9876543211', orders: 3, totalSpent: '₹18,200', joined: '2025-12-05', lastVisit: '2026-02-09' },
-        { id: 3, name: 'Karthik Venkatesh', email: 'karthik@gmail.com', mobile: '9876543212', orders: 8, totalSpent: '₹54,000', joined: '2025-10-20', lastVisit: '2026-02-08' },
-        { id: 4, name: 'Anitha Rajan', email: 'anitha@gmail.com', mobile: '9876543213', orders: 2, totalSpent: '₹8,500', joined: '2026-01-15', lastVisit: '2026-02-07' },
-        { id: 5, name: 'Vikram Sundaram', email: 'vikram@gmail.com', mobile: '9876543214', orders: 6, totalSpent: '₹45,800', joined: '2025-09-01', lastVisit: '2026-02-10' },
-    ]);
+    const [customers, setCustomers] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
+    const [sortBy, setSortBy] = useState('totalSpent');
+    const [selectedCustomer, setSelectedCustomer] = useState(null);
+    const [bookingsRaw, setBookingsRaw] = useState([]);
+    const [ordersRaw, setOrdersRaw] = useState([]);
+
+    // Real-time listeners for bookings and orders
+    useEffect(() => {
+        const unsub1 = onValue(ref(database, 'bookings'), snap => {
+            const data = snap.val();
+            setBookingsRaw(data ? Object.entries(data).map(([k, v]) => ({ firebaseKey: k, ...v })) : []);
+        });
+        const unsub2 = onValue(ref(database, 'orders'), snap => {
+            const data = snap.val();
+            setOrdersRaw(data ? Object.entries(data).map(([k, v]) => ({ firebaseKey: k, ...v })) : []);
+        });
+        return () => { unsub1(); unsub2(); };
+    }, []);
+
+    // Derive customers whenever bookings/orders change
+    useEffect(() => {
+        const map = {};
+
+        bookingsRaw.forEach(b => {
+            const key = b.mobile || b.name;
+            if (!key) return;
+            if (!map[key]) map[key] = { name: b.name, mobile: b.mobile, email: '', bookings: 0, orders: 0, totalSpent: 0, lastActivity: '', services: [] };
+            map[key].bookings += 1;
+            if (b.serviceType && !map[key].services.includes(b.serviceType)) map[key].services.push(b.serviceType);
+            const bDate = b.preferredDate || b.date || b.createdAt || '';
+            if (bDate > (map[key].lastActivity || '')) map[key].lastActivity = bDate;
+        });
+
+        ordersRaw.forEach(o => {
+            const key = o.mobile || o.customer;
+            if (!key) return;
+            if (!map[key]) map[key] = { name: o.customer, mobile: o.mobile, email: o.email || '', bookings: 0, orders: 0, totalSpent: 0, lastActivity: '', services: [] };
+            map[key].orders += 1;
+            map[key].totalSpent += Number(o.total) || 0;
+            if (o.email) map[key].email = o.email;
+            if (o.customer && !map[key].name) map[key].name = o.customer;
+            const oDate = o.date || o.createdAt || '';
+            if (oDate > (map[key].lastActivity || '')) map[key].lastActivity = oDate;
+        });
+
+        setCustomers(Object.values(map));
+        setLoading(false);
+    }, [bookingsRaw, ordersRaw]);
+
+    // Customer stats
+    const totalSpentAll = customers.reduce((s, c) => s + c.totalSpent, 0);
+    const avgSpent = customers.length > 0 ? Math.round(totalSpentAll / customers.length) : 0;
+    const repeatCustomers = customers.filter(c => (c.bookings + c.orders) > 1).length;
+
+    const filtered = customers.filter(c =>
+        (c.name || '').toLowerCase().includes(search.toLowerCase()) ||
+        (c.mobile || '').includes(search) ||
+        (c.email || '').toLowerCase().includes(search.toLowerCase())
+    );
+
+    const sorted = [...filtered].sort((a, b) => {
+        if (sortBy === 'totalSpent') return b.totalSpent - a.totalSpent;
+        if (sortBy === 'bookings') return b.bookings - a.bookings;
+        if (sortBy === 'orders') return b.orders - a.orders;
+        if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '');
+        if (sortBy === 'recent') return (b.lastActivity || '').localeCompare(a.lastActivity || '');
+        return 0;
+    });
+
+    // Get customer detail: their bookings and orders
+    const getCustomerBookings = (c) => bookingsRaw.filter(b => (b.mobile || b.name) === (c.mobile || c.name));
+    const getCustomerOrders = (c) => ordersRaw.filter(o => (o.mobile || o.customer) === (c.mobile || c.name));
 
     return (
         <div className="admin-customers">
-            <div className="page-header"><h2>👥 Customers</h2></div>
+            <div className="page-header"><h2>👥 Customers</h2><span className="dash-date">{customers.length} total</span></div>
+
+            {/* Customer Stats */}
+            <div className="customer-stats-row">
+                <div className="cstat"><span className="cstat-value">{customers.length}</span><span className="cstat-label">Total Customers</span></div>
+                <div className="cstat"><span className="cstat-value">{repeatCustomers}</span><span className="cstat-label">Repeat Customers</span></div>
+                <div className="cstat"><span className="cstat-value">₹{avgSpent.toLocaleString('en-IN')}</span><span className="cstat-label">Avg Spend</span></div>
+                <div className="cstat"><span className="cstat-value">₹{totalSpentAll.toLocaleString('en-IN')}</span><span className="cstat-label">Total Revenue</span></div>
+            </div>
+
             <div className="filters-row">
-                <input type="text" className="form-input search-input" placeholder="Search customers..." />
+                <input type="text" className="form-input search-input" placeholder="Search by name, mobile or email..." value={search} onChange={e => setSearch(e.target.value)} />
+                <select className="form-select filter-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                    <option value="totalSpent">Sort: Highest Spend</option>
+                    <option value="bookings">Sort: Most Bookings</option>
+                    <option value="orders">Sort: Most Orders</option>
+                    <option value="recent">Sort: Recent Activity</option>
+                    <option value="name">Sort: Name A-Z</option>
+                </select>
             </div>
-            <div className="data-table">
-                <table>
-                    <thead><tr><th>Name</th><th>Email</th><th>Mobile</th><th>Orders</th><th>Total Spent</th><th>Joined</th><th>Last Visit</th><th>Actions</th></tr></thead>
-                    <tbody>
-                        {customers.map(c => (
-                            <tr key={c.id}>
-                                <td><strong>{c.name}</strong></td><td>{c.email}</td><td>{c.mobile}</td>
-                                <td>{c.orders}</td><td className="text-accent">{c.totalSpent}</td>
-                                <td>{c.joined}</td><td>{c.lastVisit}</td>
-                                <td>
-                                    <div className="action-buttons">
-                                        <button className="action-btn" onClick={() => window.open(`https://wa.me/91${c.mobile}`)}>💬</button>
-                                        <button className="action-btn">👁</button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+            {loading ? <div style={{ textAlign: 'center', padding: '2rem', color: 'rgba(255,255,255,0.4)' }}>Loading...</div> : (
+                <div className="data-table">
+                    <table>
+                        <thead><tr><th>Name</th><th>Mobile</th><th>Email</th><th>Bookings</th><th>Orders</th><th>Total Spent</th><th>Services Used</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            {sorted.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>No customers yet</td></tr>}
+                            {sorted.map((c, i) => (
+                                <tr key={i} style={{ cursor: 'pointer' }} onClick={() => setSelectedCustomer(selectedCustomer === i ? null : i)}>
+                                    <td><strong>{c.name}</strong></td>
+                                    <td>{c.mobile}</td>
+                                    <td>{c.email || '—'}</td>
+                                    <td>{c.bookings}</td>
+                                    <td>{c.orders}</td>
+                                    <td className="text-accent">₹{c.totalSpent.toLocaleString('en-IN')}</td>
+                                    <td>{c.services.length > 0 ? c.services.slice(0, 2).join(', ') + (c.services.length > 2 ? ` +${c.services.length - 2}` : '') : '—'}</td>
+                                    <td>
+                                        <div className="action-buttons">
+                                            {c.mobile && <button className="action-btn" title="WhatsApp" onClick={(e) => { e.stopPropagation(); window.open(`https://wa.me/91${c.mobile}`); }}>💬</button>}
+                                            <button className="action-btn" title="Details" onClick={(e) => { e.stopPropagation(); setSelectedCustomer(selectedCustomer === i ? null : i); }}>👁</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {/* Customer Detail Panel */}
+            {selectedCustomer !== null && sorted[selectedCustomer] && (
+                <div className="customer-detail-panel">
+                    <div className="customer-detail-header">
+                        <h3>👤 {sorted[selectedCustomer].name}</h3>
+                        <button className="action-btn" onClick={() => setSelectedCustomer(null)}>✕</button>
+                    </div>
+                    <div className="customer-detail-info">
+                        <p><strong>Mobile:</strong> {sorted[selectedCustomer].mobile || '—'}</p>
+                        <p><strong>Email:</strong> {sorted[selectedCustomer].email || '—'}</p>
+                        <p><strong>Total Spent:</strong> <span className="text-accent">₹{sorted[selectedCustomer].totalSpent.toLocaleString('en-IN')}</span></p>
+                        <p><strong>Services:</strong> {sorted[selectedCustomer].services.join(', ') || '—'}</p>
+                    </div>
+                    {getCustomerBookings(sorted[selectedCustomer]).length > 0 && (
+                        <div className="customer-detail-section">
+                            <h4>📅 Bookings ({getCustomerBookings(sorted[selectedCustomer]).length})</h4>
+                            <div className="data-table">
+                                <table>
+                                    <thead><tr><th>Service</th><th>Vehicle</th><th>Date</th><th>Status</th></tr></thead>
+                                    <tbody>
+                                        {getCustomerBookings(sorted[selectedCustomer]).map((b, j) => (
+                                            <tr key={j}>
+                                                <td>{b.serviceType}</td>
+                                                <td>{b.vehicleType || '—'}</td>
+                                                <td>{b.preferredDate || b.date}</td>
+                                                <td><span className={`status-badge ${(b.status || 'pending').toLowerCase().replace(' ', '-')}`}>{b.status || 'Pending'}</span></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                    {getCustomerOrders(sorted[selectedCustomer]).length > 0 && (
+                        <div className="customer-detail-section">
+                            <h4>📦 Orders ({getCustomerOrders(sorted[selectedCustomer]).length})</h4>
+                            <div className="data-table">
+                                <table>
+                                    <thead><tr><th>Order ID</th><th>Total</th><th>Payment</th><th>Date</th><th>Status</th></tr></thead>
+                                    <tbody>
+                                        {getCustomerOrders(sorted[selectedCustomer]).map((o, j) => (
+                                            <tr key={j}>
+                                                <td><code>{o.orderId?.slice(-8) || '—'}</code></td>
+                                                <td className="text-accent">₹{Number(o.total).toLocaleString('en-IN')}</td>
+                                                <td>{o.payment}</td>
+                                                <td>{o.date}</td>
+                                                <td><span className={`status-badge ${(o.status || 'pending').toLowerCase()}`}>{o.status || 'Pending'}</span></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+            <div className="table-footer">{sorted.length} of {customers.length} customers</div>
         </div>
     );
 }
@@ -434,6 +980,227 @@ function ServicesManagement() {
                     </div>
                 ))}
             </div>
+        </div>
+    );
+}
+
+/* ═══════════════════════════════════════════════════
+   PRODUCTS MANAGEMENT (CRUD)
+   ═══════════════════════════════════════════════════ */
+const EMPTY_PRODUCT = { name: '', description: '', price: '', originalPrice: '', category: '', image: '', inStock: true, featured: false };
+
+function ProductsManagement() {
+    const [products, setProducts] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
+    const [catFilter, setCatFilter] = useState('All');
+    const [showForm, setShowForm] = useState(false);
+    const [editing, setEditing] = useState(null); // firebaseKey or null
+    const [form, setForm] = useState({ ...EMPTY_PRODUCT });
+    const [saving, setSaving] = useState(false);
+
+    // Seed local products on first load if Firebase /products is empty
+    useEffect(() => {
+        const unsub = onValue(ref(database, 'products'), snap => {
+            const data = snap.val();
+            if (data) {
+                const list = Object.entries(data).map(([k, v]) => ({ firebaseKey: k, ...v }));
+                setProducts(list);
+            } else {
+                // First time — seed from local data
+                const seedRef = ref(database, 'products');
+                localProducts.forEach(p => {
+                    push(seedRef, { ...p });
+                });
+            }
+            setLoading(false);
+        });
+        return () => unsub();
+    }, []);
+
+    const categories = ['All', ...new Set(products.map(p => p.category).filter(Boolean))];
+
+    const filtered = products.filter(p => {
+        const matchCat = catFilter === 'All' || p.category === catFilter;
+        const matchSearch = (p.name || '').toLowerCase().includes(search.toLowerCase());
+        return matchCat && matchSearch;
+    });
+
+    const openAdd = () => { setEditing(null); setForm({ ...EMPTY_PRODUCT }); setShowForm(true); };
+    const openEdit = (product) => {
+        setEditing(product.firebaseKey);
+        setForm({
+            name: product.name || '',
+            description: product.description || '',
+            price: product.price || '',
+            originalPrice: product.originalPrice || '',
+            category: product.category || '',
+            image: product.image || '',
+            inStock: product.inStock !== false,
+            featured: product.featured || false,
+        });
+        setShowForm(true);
+    };
+    const closeForm = () => { setShowForm(false); setEditing(null); setForm({ ...EMPTY_PRODUCT }); };
+
+    const handleSave = async (e) => {
+        e.preventDefault();
+        if (!form.name || !form.price || !form.category) return;
+        setSaving(true);
+        const productData = {
+            name: form.name,
+            description: form.description,
+            price: Number(form.price),
+            originalPrice: Number(form.originalPrice) || Number(form.price),
+            category: form.category,
+            image: form.image,
+            inStock: form.inStock,
+            featured: form.featured,
+            rating: 0,
+            reviews: 0,
+        };
+
+        if (editing) {
+            await update(ref(database, `products/${editing}`), productData);
+        } else {
+            await push(ref(database, 'products'), productData);
+        }
+        setSaving(false);
+        closeForm();
+    };
+
+    const handleDelete = async (firebaseKey) => {
+        if (window.confirm('Delete this product?')) {
+            await remove(ref(database, `products/${firebaseKey}`));
+        }
+    };
+
+    const toggleStock = async (firebaseKey, current) => {
+        await update(ref(database, `products/${firebaseKey}`), { inStock: !current });
+    };
+
+    const toggleFeatured = async (firebaseKey, current) => {
+        await update(ref(database, `products/${firebaseKey}`), { featured: !current });
+    };
+
+    return (
+        <div className="admin-products">
+            <div className="page-header">
+                <h2>🛍 Products</h2>
+                <button className="btn btn-primary" onClick={openAdd}>+ Add Product</button>
+            </div>
+
+            {/* Filters */}
+            <div className="filters-row">
+                <input type="text" className="form-input search-input" placeholder="Search products..." value={search} onChange={e => setSearch(e.target.value)} />
+                <select className="form-select filter-select" value={catFilter} onChange={e => setCatFilter(e.target.value)}>
+                    {categories.map(c => <option key={c}>{c}</option>)}
+                </select>
+                <span className="dash-date">{products.length} products</span>
+            </div>
+
+            {/* Add/Edit Modal */}
+            {showForm && (
+                <div className="product-modal-overlay" onClick={closeForm}>
+                    <div className="product-modal" onClick={e => e.stopPropagation()}>
+                        <div className="product-modal-header">
+                            <h3>{editing ? 'Edit Product' : 'Add New Product'}</h3>
+                            <button className="action-btn" onClick={closeForm}>✕</button>
+                        </div>
+                        <form onSubmit={handleSave} className="product-form">
+                            <div className="settings-grid">
+                                <div className="form-group full-width">
+                                    <label className="form-label">Product Name *</label>
+                                    <input className="form-input" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} required />
+                                </div>
+                                <div className="form-group full-width">
+                                    <label className="form-label">Description</label>
+                                    <textarea className="form-input" rows={3} value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Price (₹) *</label>
+                                    <input type="number" className="form-input" value={form.price} onChange={e => setForm(p => ({ ...p, price: e.target.value }))} required min="0" />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Original Price (₹)</label>
+                                    <input type="number" className="form-input" value={form.originalPrice} onChange={e => setForm(p => ({ ...p, originalPrice: e.target.value }))} min="0" />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Category *</label>
+                                    <input className="form-input" list="cat-list" value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} required />
+                                    <datalist id="cat-list">
+                                        {['Ceramic Coating', 'Polishing', 'Cleaning', 'Accessories', 'Wax & Sealant'].map(c => <option key={c} value={c} />)}
+                                    </datalist>
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Image URL</label>
+                                    <input className="form-input" value={form.image} onChange={e => setForm(p => ({ ...p, image: e.target.value }))} placeholder="https://..." />
+                                </div>
+                                <div className="form-group">
+                                    <div className="toggle-row"><label className="toggle"><input type="checkbox" checked={form.inStock} onChange={e => setForm(p => ({ ...p, inStock: e.target.checked }))} /><span className="toggle-slider"></span></label><span>In Stock</span></div>
+                                </div>
+                                <div className="form-group">
+                                    <div className="toggle-row"><label className="toggle"><input type="checkbox" checked={form.featured} onChange={e => setForm(p => ({ ...p, featured: e.target.checked }))} /><span className="toggle-slider"></span></label><span>Featured</span></div>
+                                </div>
+                            </div>
+                            <div className="product-form-actions">
+                                <button type="button" className="btn btn-outline" onClick={closeForm}>Cancel</button>
+                                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : editing ? 'Update Product' : 'Add Product'}</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Products Table */}
+            {loading ? <div style={{ textAlign: 'center', padding: '2rem', color: 'rgba(255,255,255,0.4)' }}>Loading...</div> : (
+                <div className="data-table">
+                    <table>
+                        <thead>
+                            <tr><th>Image</th><th>Product Name</th><th>Category</th><th>Price</th><th>Stock</th><th>Featured</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody>
+                            {filtered.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>No products found</td></tr>}
+                            {filtered.map(p => (
+                                <tr key={p.firebaseKey}>
+                                    <td>
+                                        <div className="product-thumb">
+                                            {p.image ? <img src={p.image} alt={p.name} /> : <span className="no-img">📷</span>}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <strong>{p.name}</strong>
+                                        {p.description && <br />}
+                                        {p.description && <small style={{ color: 'rgba(255,255,255,0.35)' }}>{p.description.slice(0, 60)}...</small>}
+                                    </td>
+                                    <td><span className="method-badge">{p.category}</span></td>
+                                    <td>
+                                        <span className="text-accent">₹{Number(p.price).toLocaleString('en-IN')}</span>
+                                        {p.originalPrice > p.price && <><br /><small style={{ textDecoration: 'line-through', color: 'rgba(255,255,255,0.3)' }}>₹{Number(p.originalPrice).toLocaleString('en-IN')}</small></>}
+                                    </td>
+                                    <td>
+                                        <button className={`status-badge ${p.inStock !== false ? 'active' : 'cancelled'}`} onClick={() => toggleStock(p.firebaseKey, p.inStock !== false)} style={{ cursor: 'pointer', border: 'none' }}>
+                                            {p.inStock !== false ? 'In Stock' : 'Out of Stock'}
+                                        </button>
+                                    </td>
+                                    <td>
+                                        <button className={`status-badge ${p.featured ? 'confirmed' : 'pending'}`} onClick={() => toggleFeatured(p.firebaseKey, p.featured)} style={{ cursor: 'pointer', border: 'none' }}>
+                                            {p.featured ? '⭐ Yes' : 'No'}
+                                        </button>
+                                    </td>
+                                    <td>
+                                        <div className="action-buttons">
+                                            <button className="action-btn" title="Edit" onClick={() => openEdit(p)}>✏️</button>
+                                            <button className="action-btn delete" title="Delete" onClick={() => handleDelete(p.firebaseKey)}>🗑</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+            <div className="table-footer">{filtered.length} of {products.length} products</div>
         </div>
     );
 }
@@ -548,6 +1315,7 @@ function Admin() {
         { path: '/admin', label: 'Dashboard', icon: '📊' },
         { path: '/admin/bookings', label: 'Bookings', icon: '📅' },
         { path: '/admin/orders', label: 'Orders', icon: '📦' },
+        { path: '/admin/products', label: 'Products', icon: '🛍' },
         { path: '/admin/payments', label: 'Payments', icon: '💳' },
         { path: '/admin/customers', label: 'Customers', icon: '👥' },
         { path: '/admin/services', label: 'Services', icon: '🔧' },
@@ -613,6 +1381,7 @@ function Admin() {
                         <Route index element={<Dashboard />} />
                         <Route path="bookings" element={<BookingsManagement />} />
                         <Route path="orders" element={<OrdersManagement />} />
+                        <Route path="products" element={<ProductsManagement />} />
                         <Route path="payments" element={<PaymentsManagement />} />
                         <Route path="customers" element={<CustomersManagement />} />
                         <Route path="services" element={<ServicesManagement />} />

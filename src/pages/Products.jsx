@@ -1,12 +1,31 @@
-import { useState } from 'react';
-import { products, categories } from '../data/products';
+import { useState, useEffect } from 'react';
+import { products as localProducts, categories as localCategories } from '../data/products';
 import { useCart } from '../context/CartContext';
+import { ref, onValue } from 'firebase/database';
+import { database } from '../config/firebase';
 import './Products.css';
 
 function Products() {
     const [activeCategory, setActiveCategory] = useState('All Products');
     const [notification, setNotification] = useState(null);
+    const [products, setProducts] = useState(localProducts);
     const { addToCart } = useCart();
+
+    // Load products from Firebase (falls back to local data)
+    useEffect(() => {
+        const unsub = onValue(ref(database, 'products'), snap => {
+            const data = snap.val();
+            if (data) {
+                const list = Object.entries(data)
+                    .map(([k, v]) => ({ ...v, id: k }))
+                    .filter(p => p.inStock !== false);
+                setProducts(list);
+            }
+        });
+        return () => unsub();
+    }, []);
+
+    const categories = ['All Products', ...new Set(products.map(p => p.category).filter(Boolean))];
 
     const filteredProducts = activeCategory === 'All Products'
         ? products
