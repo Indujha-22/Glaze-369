@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { ref, get, onValue, update, remove, push, set } from 'firebase/database';
 import { database } from '../config/firebase';
 import { products as localProducts, categories as localCategories } from '../data/products';
+import { services as localServices } from '../data/services';
+import { galleryItems as localGallery, galleryCategories } from '../data/gallery';
 import './Admin.css';
 
 /* ═══════════════════════════════════════════════════
@@ -947,39 +949,188 @@ function CustomersManagement() {
 }
 
 /* ═══════════════════════════════════════════════════
-   SERVICES MANAGEMENT
+   SERVICES MANAGEMENT (CRUD)
    ═══════════════════════════════════════════════════ */
+const EMPTY_SERVICE = { name: '', shortDescription: '', fullDescription: '', duration: '', price: '', priceRange: '', image: '', features: '', status: 'Active' };
+
 function ServicesManagement() {
-    const [services] = useState([
-        { id: 1, name: 'Exterior Wash & Detailing', duration: '2-3 hours', price: '₹1,500 - ₹2,500', status: 'Active' },
-        { id: 2, name: 'Interior Deep Cleaning', duration: '3-4 hours', price: '₹2,000 - ₹3,500', status: 'Active' },
-        { id: 3, name: 'Ceramic Coating', duration: '1-2 days', price: '₹15,000 - ₹35,000', status: 'Active' },
-        { id: 4, name: 'Paint Protection Film', duration: '2-3 days', price: '₹25,000 - ₹1,50,000', status: 'Active' },
-        { id: 5, name: 'Engine Bay Cleaning', duration: '1-2 hours', price: '₹1,200 - ₹2,000', status: 'Active' },
-        { id: 6, name: 'Headlight Restoration', duration: '1 hour', price: '₹800 - ₹1,500', status: 'Active' },
-    ]);
+    const [services, setServices] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [showForm, setShowForm] = useState(false);
+    const [editing, setEditing] = useState(null);
+    const [form, setForm] = useState({ ...EMPTY_SERVICE });
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        const unsub = onValue(ref(database, 'services'), snap => {
+            const data = snap.val();
+            if (data) {
+                const list = Object.entries(data).map(([k, v]) => ({ firebaseKey: k, ...v }));
+                setServices(list);
+            } else {
+                // First time — seed from local data
+                const seedRef = ref(database, 'services');
+                localServices.forEach(s => {
+                    push(seedRef, {
+                        name: s.name,
+                        shortDescription: s.shortDescription || '',
+                        fullDescription: s.fullDescription || '',
+                        duration: s.duration,
+                        price: s.price,
+                        priceRange: s.priceRange,
+                        image: s.image || '',
+                        features: (s.features || []).join(', '),
+                        status: 'Active',
+                    });
+                });
+            }
+            setLoading(false);
+        });
+        return () => unsub();
+    }, []);
+
+    const openAdd = () => { setEditing(null); setForm({ ...EMPTY_SERVICE }); setShowForm(true); };
+    const openEdit = (service) => {
+        setEditing(service.firebaseKey);
+        setForm({
+            name: service.name || '',
+            shortDescription: service.shortDescription || '',
+            fullDescription: service.fullDescription || '',
+            duration: service.duration || '',
+            price: service.price || '',
+            priceRange: service.priceRange || '',
+            image: service.image || '',
+            features: Array.isArray(service.features) ? service.features.join(', ') : (service.features || ''),
+            status: service.status || 'Active',
+        });
+        setShowForm(true);
+    };
+    const closeForm = () => { setShowForm(false); setEditing(null); setForm({ ...EMPTY_SERVICE }); };
+
+    const handleSave = async (e) => {
+        e.preventDefault();
+        if (!form.name || !form.duration || !form.price) return;
+        setSaving(true);
+        const serviceData = {
+            name: form.name,
+            shortDescription: form.shortDescription,
+            fullDescription: form.fullDescription,
+            duration: form.duration,
+            price: form.price,
+            priceRange: form.priceRange || form.price,
+            image: form.image,
+            features: form.features,
+            status: form.status,
+        };
+        if (editing) {
+            await update(ref(database, `services/${editing}`), serviceData);
+        } else {
+            await push(ref(database, 'services'), serviceData);
+        }
+        setSaving(false);
+        closeForm();
+    };
+
+    const handleDelete = async (firebaseKey) => {
+        if (window.confirm('Delete this service?')) {
+            await remove(ref(database, `services/${firebaseKey}`));
+        }
+    };
+
+    const toggleStatus = async (firebaseKey, currentStatus) => {
+        await update(ref(database, `services/${firebaseKey}`), { status: currentStatus === 'Active' ? 'Inactive' : 'Active' });
+    };
 
     return (
         <div className="admin-services">
-            <div className="page-header"><h2>🔧 Services</h2><button className="btn btn-primary">+ Add Service</button></div>
-            <div className="services-grid">
-                {services.map(s => (
-                    <div key={s.id} className="service-admin-card">
-                        <div className="service-admin-header">
-                            <h3>{s.name}</h3>
-                            <span className={`status-badge ${s.status.toLowerCase()}`}>{s.status}</span>
+            <div className="page-header"><h2>🔧 Services</h2><button className="btn btn-primary" onClick={openAdd}>+ Add Service</button></div>
+
+            {/* Add/Edit Modal */}
+            {showForm && (
+                <div className="product-modal-overlay" onClick={closeForm}>
+                    <div className="product-modal" onClick={e => e.stopPropagation()}>
+                        <div className="product-modal-header">
+                            <h3>{editing ? 'Edit Service' : 'Add New Service'}</h3>
+                            <button className="action-btn" onClick={closeForm}>✕</button>
                         </div>
-                        <div className="service-admin-details">
-                            <p><strong>Duration:</strong> {s.duration}</p>
-                            <p><strong>Price:</strong> {s.price}</p>
-                        </div>
-                        <div className="service-admin-actions">
-                            <button className="btn btn-outline btn-sm">Edit</button>
-                            <button className="btn btn-outline btn-sm">Delete</button>
-                        </div>
+                        <form onSubmit={handleSave} className="product-form">
+                            <div className="settings-grid">
+                                <div className="form-group full-width">
+                                    <label className="form-label">Service Name *</label>
+                                    <input className="form-input" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} required />
+                                </div>
+                                <div className="form-group full-width">
+                                    <label className="form-label">Short Description</label>
+                                    <input className="form-input" value={form.shortDescription} onChange={e => setForm(p => ({ ...p, shortDescription: e.target.value }))} />
+                                </div>
+                                <div className="form-group full-width">
+                                    <label className="form-label">Full Description</label>
+                                    <textarea className="form-input" rows={3} value={form.fullDescription} onChange={e => setForm(p => ({ ...p, fullDescription: e.target.value }))} />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Duration *</label>
+                                    <input className="form-input" value={form.duration} onChange={e => setForm(p => ({ ...p, duration: e.target.value }))} placeholder="e.g. 2-3 hours" required />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Price *</label>
+                                    <input className="form-input" value={form.price} onChange={e => setForm(p => ({ ...p, price: e.target.value }))} placeholder="e.g. ₹1,500" required />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Price Range</label>
+                                    <input className="form-input" value={form.priceRange} onChange={e => setForm(p => ({ ...p, priceRange: e.target.value }))} placeholder="e.g. ₹1,500 - ₹2,500" />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Image URL</label>
+                                    <input className="form-input" value={form.image} onChange={e => setForm(p => ({ ...p, image: e.target.value }))} placeholder="https://..." />
+                                </div>
+                                <div className="form-group full-width">
+                                    <label className="form-label">Features (comma-separated)</label>
+                                    <textarea className="form-input" rows={2} value={form.features} onChange={e => setForm(p => ({ ...p, features: e.target.value }))} placeholder="Feature 1, Feature 2, Feature 3" />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Status</label>
+                                    <select className="form-input" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
+                                        <option value="Active">Active</option>
+                                        <option value="Inactive">Inactive</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="product-form-actions">
+                                <button type="button" className="btn btn-outline" onClick={closeForm}>Cancel</button>
+                                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : editing ? 'Update Service' : 'Add Service'}</button>
+                            </div>
+                        </form>
                     </div>
-                ))}
-            </div>
+                </div>
+            )}
+
+            {loading ? <div style={{ textAlign: 'center', padding: '2rem', color: 'rgba(255,255,255,0.4)' }}>Loading...</div> : (
+                <div className="services-grid">
+                    {services.length === 0 && <p style={{ color: 'rgba(255,255,255,0.3)', textAlign: 'center', padding: '2rem' }}>No services yet. Click "+ Add Service" to create one.</p>}
+                    {services.map(s => (
+                        <div key={s.firebaseKey} className="service-admin-card">
+                            <div className="service-admin-header">
+                                <h3>{s.name}</h3>
+                                <span
+                                    className={`status-badge ${(s.status || 'active').toLowerCase()}`}
+                                    style={{ cursor: 'pointer' }}
+                                    onClick={() => toggleStatus(s.firebaseKey, s.status)}
+                                    title="Click to toggle status"
+                                >{s.status || 'Active'}</span>
+                            </div>
+                            <div className="service-admin-details">
+                                <p><strong>Duration:</strong> {s.duration}</p>
+                                <p><strong>Price:</strong> {s.priceRange || s.price}</p>
+                                {s.shortDescription && <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginTop: '0.5rem' }}>{s.shortDescription}</p>}
+                            </div>
+                            <div className="service-admin-actions">
+                                <button className="btn btn-outline btn-sm" onClick={() => openEdit(s)}>Edit</button>
+                                <button className="btn btn-outline btn-sm" onClick={() => handleDelete(s.firebaseKey)}>Delete</button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
@@ -1208,37 +1359,153 @@ function ProductsManagement() {
 /* ═══════════════════════════════════════════════════
    GALLERY MANAGEMENT
    ═══════════════════════════════════════════════════ */
+const EMPTY_GALLERY_ITEM = { title: '', category: '', image: '', description: '' };
+
 function GalleryManagement() {
-    const images = [
-        'https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?w=400&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1619405399517-d7fce0f13302?w=400&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1580273916550-e323be2ae537?w=400&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=400&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=400&auto=format&fit=crop',
-    ];
+    const [items, setItems] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [showForm, setShowForm] = useState(false);
+    const [editing, setEditing] = useState(null);
+    const [form, setForm] = useState({ ...EMPTY_GALLERY_ITEM });
+    const [saving, setSaving] = useState(false);
+    const [catFilter, setCatFilter] = useState('All');
+
+    useEffect(() => {
+        const unsub = onValue(ref(database, 'gallery'), snap => {
+            const data = snap.val();
+            if (data) {
+                const list = Object.entries(data).map(([k, v]) => ({ firebaseKey: k, ...v }));
+                setItems(list);
+            } else {
+                // First time — seed from local data
+                const seedRef = ref(database, 'gallery');
+                localGallery.forEach(g => {
+                    push(seedRef, {
+                        title: g.title,
+                        category: g.category || '',
+                        image: g.image,
+                        description: g.description || '',
+                    });
+                });
+            }
+            setLoading(false);
+        });
+        return () => unsub();
+    }, []);
+
+    const categories = ['All', ...new Set(items.map(i => i.category).filter(Boolean))];
+
+    const filtered = items.filter(i => catFilter === 'All' || i.category === catFilter);
+
+    const openAdd = () => { setEditing(null); setForm({ ...EMPTY_GALLERY_ITEM }); setShowForm(true); };
+    const openEdit = (item) => {
+        setEditing(item.firebaseKey);
+        setForm({
+            title: item.title || '',
+            category: item.category || '',
+            image: item.image || '',
+            description: item.description || '',
+        });
+        setShowForm(true);
+    };
+    const closeForm = () => { setShowForm(false); setEditing(null); setForm({ ...EMPTY_GALLERY_ITEM }); };
+
+    const handleSave = async (e) => {
+        e.preventDefault();
+        if (!form.image) return;
+        setSaving(true);
+        const itemData = {
+            title: form.title,
+            category: form.category,
+            image: form.image,
+            description: form.description,
+        };
+        if (editing) {
+            await update(ref(database, `gallery/${editing}`), itemData);
+        } else {
+            await push(ref(database, 'gallery'), itemData);
+        }
+        setSaving(false);
+        closeForm();
+    };
+
+    const handleDelete = async (firebaseKey) => {
+        if (window.confirm('Delete this gallery image?')) {
+            await remove(ref(database, `gallery/${firebaseKey}`));
+        }
+    };
 
     return (
         <div className="admin-gallery">
-            <div className="page-header"><h2>🖼 Gallery</h2><button className="btn btn-primary">+ Upload New</button></div>
-            <div className="upload-zone">
-                <div className="upload-placeholder">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-                    <p>Drag and drop images here</p>
-                    <button className="btn btn-outline">Browse Files</button>
-                </div>
+            <div className="page-header"><h2>🖼 Gallery</h2><button className="btn btn-primary" onClick={openAdd}>+ Upload New</button></div>
+
+            {/* Filters */}
+            <div className="filters-row">
+                <select className="form-select filter-select" value={catFilter} onChange={e => setCatFilter(e.target.value)}>
+                    {categories.map(c => <option key={c}>{c}</option>)}
+                </select>
+                <span className="dash-date">{items.length} images</span>
             </div>
-            <div className="gallery-admin-grid">
-                {images.map((img, i) => (
-                    <div key={i} className="gallery-admin-item">
-                        <img src={img} alt={`Gallery ${i + 1}`} />
-                        <div className="gallery-admin-overlay">
-                            <button className="action-btn">✏️</button>
-                            <button className="action-btn delete">🗑</button>
+
+            {/* Add/Edit Modal */}
+            {showForm && (
+                <div className="product-modal-overlay" onClick={closeForm}>
+                    <div className="product-modal" onClick={e => e.stopPropagation()}>
+                        <div className="product-modal-header">
+                            <h3>{editing ? 'Edit Gallery Image' : 'Add Gallery Image'}</h3>
+                            <button className="action-btn" onClick={closeForm}>✕</button>
                         </div>
+                        <form onSubmit={handleSave} className="product-form">
+                            <div className="settings-grid">
+                                <div className="form-group full-width">
+                                    <label className="form-label">Image URL *</label>
+                                    <input className="form-input" value={form.image} onChange={e => setForm(p => ({ ...p, image: e.target.value }))} placeholder="https://..." required />
+                                </div>
+                                <div className="form-group full-width">
+                                    <label className="form-label">Title</label>
+                                    <input className="form-input" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Category</label>
+                                    <input className="form-input" list="gallery-cat-list" value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} />
+                                    <datalist id="gallery-cat-list">
+                                        {galleryCategories.filter(c => c !== 'All').map(c => <option key={c} value={c} />)}
+                                    </datalist>
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Description</label>
+                                    <input className="form-input" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
+                                </div>
+                            </div>
+                            {form.image && (
+                                <div style={{ margin: '1rem 0', textAlign: 'center' }}>
+                                    <img src={form.image} alt="Preview" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8, objectFit: 'cover' }} />
+                                </div>
+                            )}
+                            <div className="product-form-actions">
+                                <button type="button" className="btn btn-outline" onClick={closeForm}>Cancel</button>
+                                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : editing ? 'Update Image' : 'Add Image'}</button>
+                            </div>
+                        </form>
                     </div>
-                ))}
-            </div>
+                </div>
+            )}
+
+            {loading ? <div style={{ textAlign: 'center', padding: '2rem', color: 'rgba(255,255,255,0.4)' }}>Loading...</div> : (
+                <div className="gallery-admin-grid">
+                    {filtered.length === 0 && <p style={{ color: 'rgba(255,255,255,0.3)', textAlign: 'center', padding: '2rem' }}>No images found.</p>}
+                    {filtered.map(item => (
+                        <div key={item.firebaseKey} className="gallery-admin-item">
+                            <img src={item.image} alt={item.title || 'Gallery'} />
+                            {item.title && <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}><strong>{item.title}</strong>{item.category && <span className="method-badge" style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}>{item.category}</span>}</div>}
+                            <div className="gallery-admin-overlay">
+                                <button className="action-btn" onClick={() => openEdit(item)}>✏️</button>
+                                <button className="action-btn delete" onClick={() => handleDelete(item.firebaseKey)}>🗑</button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
@@ -1252,7 +1519,7 @@ function SettingsPage() {
         phone: '+91 98765 43210',
         email: 'info@glaze369.com',
         address: '123 Main Road, Tiruppur, Tamil Nadu 641602',
-        razorpayKey: 'rzp_test_***',
+        razorpayKey: 'rzp_test_SPOrR8y66LGYgr',
         razorpayEnabled: true,
         codEnabled: true,
         notifyWhatsApp: true,
