@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { services, vehicleTypes, timeSlots } from '../data/services';
-import { ref, push, serverTimestamp } from 'firebase/database';
+import { services as localServices, vehicleTypes, timeSlots } from '../data/services';
+import { onValue, ref, push, serverTimestamp } from 'firebase/database';
 import { database } from '../config/firebase';
 import './Booking.css';
 
@@ -19,6 +19,41 @@ function Booking() {
     });
     const [isSubmitted, setIsSubmitted] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [services, setServices] = useState(localServices);
+
+    useEffect(() => {
+        const servicesRef = ref(database, 'services');
+        const unsubscribe = onValue(servicesRef, (snapshot) => {
+            const data = snapshot.val();
+            if (!data) {
+                setServices(localServices);
+                return;
+            }
+
+            const normalizedServices = Object.values(data)
+                .map((service) => ({
+                    ...service,
+                    status: service.status || 'Active',
+                    name: service.name || '',
+                }))
+                .filter((service) => service.status !== 'Inactive' && service.name);
+
+            setServices(normalizedServices.length > 0 ? normalizedServices : localServices);
+        });
+
+        return () => unsubscribe();
+    }, []);
+
+    const availableServiceNames = useMemo(
+        () => services.map((service) => service.name).filter(Boolean),
+        [services]
+    );
+
+    useEffect(() => {
+        if (preSelectedService && !availableServiceNames.includes(preSelectedService)) {
+            setFormData((prev) => ({ ...prev, serviceType: '' }));
+        }
+    }, [preSelectedService, availableServiceNames]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -242,8 +277,8 @@ function Booking() {
                                         required
                                     >
                                         <option value="">Select a service</option>
-                                        {services.map(service => (
-                                            <option key={service.id} value={service.name}>{service.name}</option>
+                                        {services.map((service, index) => (
+                                            <option key={service.id || service.firebaseKey || index} value={service.name}>{service.name}</option>
                                         ))}
                                     </select>
                                 </div>

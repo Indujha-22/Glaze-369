@@ -305,6 +305,12 @@ ul {
   color: var(--color-text-muted);
 }
 
+.form-input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 1;
+  cursor: pointer;
+}
+
 .form-textarea {
   min-height: 120px;
   resize: vertical;

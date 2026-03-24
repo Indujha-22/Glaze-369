@@ -1,13 +1,39 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { services } from '../data/services';
+import { services as localServices } from '../data/services';
 import { testimonials } from '../data/testimonials';
+import { onValue, ref } from 'firebase/database';
+import { database } from '../config/firebase';
 import './Home.css';
 
 function Home() {
+    const [services, setServices] = useState(localServices);
     const [currentTestimonial, setCurrentTestimonial] = useState(0);
     const [isVisible, setIsVisible] = useState({});
     const sectionRefs = useRef({});
+
+    useEffect(() => {
+        const servicesRef = ref(database, 'services');
+        const unsubscribe = onValue(servicesRef, (snapshot) => {
+            const data = snapshot.val();
+            if (!data) {
+                setServices(localServices);
+                return;
+            }
+
+            const normalizedServices = Object.values(data)
+                .map((service) => ({
+                    ...service,
+                    status: service.status || 'Active',
+                    name: service.name || '',
+                }))
+                .filter((service) => service.status !== 'Inactive' && service.name);
+
+            setServices(normalizedServices.length > 0 ? normalizedServices : localServices);
+        });
+
+        return () => unsubscribe();
+    }, []);
 
     // Auto-rotate testimonials
     useEffect(() => {
@@ -137,7 +163,7 @@ function Home() {
                     <div className="services-grid">
                         {featuredServices.map((service, index) => (
                             <div
-                                key={service.id}
+                                key={service.id || service.firebaseKey || `${service.name}-${index}`}
                                 className="service-card"
                                 style={{ animationDelay: `${index * 0.1}s` }}
                             >

@@ -1,10 +1,49 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { services, vehicleTypes } from '../data/services';
+import { services as localServices, vehicleTypes } from '../data/services';
+import { onValue, ref } from 'firebase/database';
+import { database } from '../config/firebase';
 import './Services.css';
 
 function Services() {
+    const [services, setServices] = useState(localServices);
     const [expandedService, setExpandedService] = useState(null);
+
+    useEffect(() => {
+        const servicesRef = ref(database, 'services');
+        const unsubscribe = onValue(servicesRef, (snapshot) => {
+            const data = snapshot.val();
+            if (!data) {
+                setServices(localServices);
+                return;
+            }
+
+            const normalizedServices = Object.entries(data)
+                .map(([key, service], index) => ({
+                    id: service.id || key || index + 1,
+                    firebaseKey: key,
+                    name: service.name || '',
+                    shortDescription: service.shortDescription || '',
+                    fullDescription: service.fullDescription || '',
+                    duration: service.duration || '',
+                    price: service.price || '',
+                    priceRange: service.priceRange || service.price || '',
+                    image: service.image || '',
+                    features: Array.isArray(service.features)
+                        ? service.features
+                        : String(service.features || '')
+                            .split(',')
+                            .map((feature) => feature.trim())
+                            .filter(Boolean),
+                    status: service.status || 'Active',
+                }))
+                .filter((service) => service.status !== 'Inactive');
+
+            setServices(normalizedServices.length > 0 ? normalizedServices : localServices);
+        });
+
+        return () => unsubscribe();
+    }, []);
 
     const toggleExpand = (serviceId) => {
         setExpandedService(expandedService === serviceId ? null : serviceId);

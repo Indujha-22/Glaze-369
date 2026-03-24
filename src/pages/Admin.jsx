@@ -979,7 +979,7 @@ function ServicesManagement() {
                         price: s.price,
                         priceRange: s.priceRange,
                         image: s.image || '',
-                        features: (s.features || []).join(', '),
+                        features: Array.isArray(s.features) ? s.features : [],
                         status: 'Active',
                     });
                 });
@@ -1019,7 +1019,10 @@ function ServicesManagement() {
             price: form.price,
             priceRange: form.priceRange || form.price,
             image: form.image,
-            features: form.features,
+            features: form.features
+                .split(',')
+                .map(feature => feature.trim())
+                .filter(Boolean),
             status: form.status,
         };
         if (editing) {
