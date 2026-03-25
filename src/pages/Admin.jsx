@@ -1519,9 +1519,9 @@ function GalleryManagement() {
 function SettingsPage() {
     const [settings, setSettings] = useState({
         siteName: 'Glaze369 Car Detailing',
-        phone: '+91 98765 43210',
+        phone: '+91 90253 92523',
         email: 'info@glaze369.com',
-        address: '123 Main Road, Tiruppur, Tamil Nadu 641602',
+        address: 'GLAZE369, Chinnakarai, Tiruppur, Tamil Nadu 641605',
         razorpayKey: 'rzp_test_SPOrR8y66LGYgr',
         razorpayEnabled: true,
         codEnabled: true,

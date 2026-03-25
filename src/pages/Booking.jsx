@@ -122,7 +122,7 @@ function Booking() {
                             </div>
                             <div className="success-actions">
                                 <a
-                                    href={`https://wa.me/919876543210?text=Hi, I just booked a ${formData.serviceType} service for ${formData.preferredDate} at ${formData.preferredTime}. Name: ${formData.name}`}
+                                    href={`https://wa.me/919025392523?text=Hi, I just booked a ${formData.serviceType} service for ${formData.preferredDate} at ${formData.preferredTime}. Name: ${formData.name}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="btn btn-primary"
@@ -187,7 +187,7 @@ function Booking() {
                                 </svg>
                                 <div>
                                     <strong>Glaze369 Workshop</strong>
-                                    <p>123 Main Road, Tiruppur, Tamil Nadu 641602</p>
+                                    <p>GLAZE369, Chinnakarai, Tiruppur, Tamil Nadu 641605</p>
                                 </div>
                             </div>
                             <div className="info-item">
@@ -207,7 +207,7 @@ function Booking() {
                                 </svg>
                                 <div>
                                     <strong>Contact</strong>
-                                    <p>+91 98765 43210</p>
+                                    <p>+91 90253 92523</p>
                                 </div>
                             </div>
                             <div className="info-note">

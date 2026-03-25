@@ -1,14 +1,63 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { onValue, ref } from 'firebase/database';
+import { database } from '../config/firebase';
 import { galleryItems, galleryCategories } from '../data/gallery';
 import './Gallery.css';
 
 function Gallery() {
+    const [items, setItems] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [activeCategory, setActiveCategory] = useState('All');
     const [selectedItem, setSelectedItem] = useState(null);
 
+    useEffect(() => {
+        const galleryRef = ref(database, 'gallery');
+        const unsubscribe = onValue(
+            galleryRef,
+            (snapshot) => {
+                const data = snapshot.val();
+
+                if (data) {
+                    const list = Object.entries(data).map(([firebaseKey, value], index) => ({
+                        firebaseKey,
+                        id: value.id || firebaseKey || index + 1,
+                        type: value.type || 'image',
+                        title: value.title || 'Gallery Image',
+                        category: value.category || 'Workshop',
+                        image: value.image || '',
+                        description: value.description || '',
+                        createdAt: value.createdAt || null,
+                    }));
+                    setItems(list.reverse());
+                } else {
+                    setItems(galleryItems);
+                }
+
+                setLoading(false);
+            },
+            () => {
+                setItems(galleryItems);
+                setLoading(false);
+            }
+        );
+
+        return () => unsubscribe();
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            document.body.style.overflow = 'auto';
+        };
+    }, []);
+
+    const categories = useMemo(() => {
+        const dynamicCategories = [...new Set(items.map(item => item.category).filter(Boolean))];
+        return ['All', ...dynamicCategories.length ? dynamicCategories : galleryCategories.filter(c => c !== 'All')];
+    }, [items]);
+
     const filteredItems = activeCategory === 'All'
-        ? galleryItems
-        : galleryItems.filter(item => item.category === activeCategory);
+        ? items
+        : items.filter(item => item.category === activeCategory);
 
     const openLightbox = (item) => {
         setSelectedItem(item);
@@ -56,7 +105,7 @@ function Gallery() {
                 <div className="container">
                     {/* Category Filter */}
                     <div className="gallery-filter">
-                        {galleryCategories.map(category => (
+                        {categories.map(category => (
                             <button
                                 key={category}
                                 className={`filter-btn ${activeCategory === category ? 'active' : ''}`}
@@ -69,9 +118,11 @@ function Gallery() {
 
                     {/* Gallery Grid */}
                     <div className="gallery-grid">
+                        {loading && <p>Loading gallery...</p>}
+                        {!loading && filteredItems.length === 0 && <p>No gallery items available right now.</p>}
                         {filteredItems.map((item, index) => (
                             <div
-                                key={item.id}
+                                key={item.firebaseKey || item.id}
                                 className="gallery-item"
                                 style={{ animationDelay: `${index * 0.1}s` }}
                                 onClick={() => openLightbox(item)}

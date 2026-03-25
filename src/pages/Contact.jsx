@@ -41,8 +41,8 @@ function Contact() {
                                     </div>
                                     <div className="contact-card-content">
                                         <h3>Workshop Address</h3>
-                                        <p>123 Main Road, Near Bus Stand</p>
-                                        <p>Tiruppur, Tamil Nadu 641602</p>
+                                        <p>GLAZE369, Chinnakarai</p>
+                                        <p>Tiruppur, Tamil Nadu 641605</p>
                                     </div>
                                 </div>
 
@@ -54,8 +54,7 @@ function Contact() {
                                     </div>
                                     <div className="contact-card-content">
                                         <h3>Phone</h3>
-                                        <a href="tel:+919876543210">+91 98765 43210</a>
-                                        <a href="tel:+919876543211">+91 98765 43211</a>
+                                        <a href="tel:+919025392523">+91 90253 92523</a>
                                     </div>
                                 </div>
 
@@ -90,7 +89,7 @@ function Contact() {
 
                             {/* WhatsApp Button */}
                             <a
-                                href="https://wa.me/919876543210?text=Hi, I'm interested in your car detailing services."
+                                href="https://wa.me/919025392523?text=Hi, I'm interested in your car detailing services."
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="whatsapp-btn"
@@ -106,7 +105,7 @@ function Contact() {
                         <div className="contact-map">
                             <div className="map-container">
                                 <iframe
-                                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d125323.40216575065!2d77.26554899999999!3d11.1085242!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3ba907b0754f67c5%3A0x5c8b4c24d20d66e2!2sTiruppur%2C%20Tamil%20Nadu!5e0!3m2!1sen!2sin!4v1703942400000!5m2!1sen!2sin"
+                                    src="https://www.google.com/maps?q=GLAZE369,+Chinnakarai,+Tiruppur,+Tamil+Nadu+641605&output=embed"
                                     width="100%"
                                     height="100%"
                                     style={{ border: 0 }}
@@ -117,7 +116,7 @@ function Contact() {
                                 ></iframe>
                             </div>
                             <a
-                                href="https://maps.google.com/?q=Tiruppur,Tamil+Nadu"
+                                href="https://maps.app.goo.gl/KtzHNiHgE3QRnRn68?g_st=aw"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="btn btn-primary map-btn"

@@ -239,6 +239,20 @@ export const AdminProvider = ({ children }) => {
         }
     };
 
+    const updateGalleryItem = async (galleryId, updates) => {
+        try {
+            const galleryRef = ref(database, `gallery/${galleryId}`);
+            await update(galleryRef, {
+                ...updates,
+                updatedAt: new Date().toISOString()
+            });
+            return { success: true };
+        } catch (error) {
+            console.error('Error updating gallery item:', error);
+            throw error;
+        }
+    };
+
     const deleteGalleryItem = async (galleryId) => {
         try {
             const galleryRef = ref(database, `gallery/${galleryId}`);
@@ -285,6 +299,7 @@ export const AdminProvider = ({ children }) => {
         getAllProducts,
         // Gallery
         createGalleryItem,
+        updateGalleryItem,
         deleteGalleryItem,
         getAllGalleryItems,
     };
